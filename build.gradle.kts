@@ -65,6 +65,14 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// Launches the sample JPEG XL viewer from the test sources.
+tasks.register<JavaExec>("runViewer") {
+    group = "application"
+    description = "Runs the JxlImageViewer sample (file dialog + Swing window)."
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass = "jp.hisano.imageio.jxl.sample.JxlImageViewer"
+}
+
 // Self-contained jar (imageio-jxl-<version>-all.jar) with the Chicory
 // runtime shaded under jp.hisano.imageio.jxl.internal so it cannot clash with
 // another Chicory version on the application classpath.

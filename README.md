@@ -18,6 +18,13 @@ The reader decodes the first frame of the image (including the first frame
 of animations) as a `TYPE_INT_ARGB` `BufferedImage`. Both the bare
 codestream (`FF 0A`) and the ISOBMFF container format are supported.
 
+A sample Swing viewer is included in the test sources
+(`jp.hisano.imageio.jxl.sample.JxlImageViewer`); launch it with:
+
+```
+./gradlew runViewer
+```
+
 ## Requirements
 
 - **Java 11 or newer at runtime.** The Chicory runtime is compiled for
