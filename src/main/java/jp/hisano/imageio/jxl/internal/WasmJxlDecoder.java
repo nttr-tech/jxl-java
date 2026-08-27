@@ -8,6 +8,8 @@ import com.dylibso.chicory.wasm.ChicoryException;
 import com.dylibso.chicory.wasm.WasmModule;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -125,14 +127,9 @@ public final class WasmJxlDecoder {
     }
 
     private static int[] bgraToArgb(byte[] bgra, int numPixels) {
+        // BGRA bytes read as little-endian ints are exactly 0xAARRGGBB.
         int[] argb = new int[numPixels];
-        for (int i = 0; i < numPixels; i++) {
-            int base = i * 4;
-            argb[i] = (bgra[base] & 0xFF)
-                    | (bgra[base + 1] & 0xFF) << 8
-                    | (bgra[base + 2] & 0xFF) << 16
-                    | (bgra[base + 3] & 0xFF) << 24;
-        }
+        ByteBuffer.wrap(bgra).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(argb);
         return argb;
     }
 
