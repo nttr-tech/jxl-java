@@ -1,0 +1,134 @@
+package jp.hisano.imageio.jxl.internal;
+
+import com.dylibso.chicory.runtime.ExportFunction;
+import com.dylibso.chicory.runtime.Instance;
+import com.dylibso.chicory.runtime.Memory;
+import com.dylibso.chicory.wasm.ChicoryException;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Decodes JPEG XL files by calling the jxl-rs decoder compiled to
+ * WebAssembly and executed with the Chicory runtime (AOT-compiled classes).
+ *
+ * <p>Each call creates a fresh WebAssembly instance, so this class is
+ * thread-safe and decodes are fully isolated from each other.
+ */
+public final class WasmJxlDecoder {
+
+    private WasmJxlDecoder() {
+    }
+
+    /** The first frame of a decoded JPEG XL image. */
+    public static final class Result {
+        private final int width;
+        private final int height;
+        private final int[] argb;
+
+        Result(int width, int height, int[] argb) {
+            this.width = width;
+            this.height = height;
+            this.argb = argb;
+        }
+
+        public int getWidth() {
+            return width;
+        }
+
+        public int getHeight() {
+            return height;
+        }
+
+        /** Pixels in {@code 0xAARRGGBB} order, row-major, {@code width * height} long. */
+        public int[] getArgb() {
+            return argb;
+        }
+    }
+
+    /**
+     * Decodes the first frame of the given JPEG XL file.
+     *
+     * @param data the complete file contents (codestream or container)
+     * @return the decoded image as ARGB pixels
+     * @throws IOException if the data is not a valid JPEG XL file or decoding fails
+     */
+    public static Result decode(byte[] data) throws IOException {
+        if (data == null || data.length == 0) {
+            throw new IOException("Empty JPEG XL input");
+        }
+        try {
+            Instance instance = Instance.builder(JxlDecoderWasm.load())
+                    .withMachineFactory(JxlDecoderWasm::create)
+                    .withStart(false)
+                    .build();
+            return decodeWithInstance(instance, data);
+        } catch (ChicoryException e) {
+            throw new IOException("JPEG XL decoder failed: " + e.getMessage(), e);
+        }
+    }
+
+    private static Result decodeWithInstance(Instance instance, byte[] data) throws IOException {
+        Memory memory = instance.memory();
+
+        int inputPtr = (int) call(instance, "jxl_alloc", data.length)[0];
+        try {
+            memory.write(inputPtr, data);
+            long status = call(instance, "jxl_decode", inputPtr, data.length)[0];
+            if (status != 0) {
+                throw new IOException("Failed to decode JPEG XL image: " + readError(instance));
+            }
+        } finally {
+            call(instance, "jxl_free", inputPtr, data.length);
+        }
+
+        try {
+            int width = (int) call(instance, "jxl_get_width")[0];
+            int height = (int) call(instance, "jxl_get_height")[0];
+            int pixelsPtr = (int) call(instance, "jxl_get_pixels")[0];
+            if (width <= 0 || height <= 0 || pixelsPtr == 0) {
+                throw new IOException("JPEG XL decoder returned an empty image");
+            }
+            long byteLength = (long) width * height * 4;
+            if (byteLength > Integer.MAX_VALUE) {
+                throw new IOException(
+                        "JPEG XL image too large: " + width + "x" + height);
+            }
+            byte[] bgra = memory.readBytes(pixelsPtr, (int) byteLength);
+            return new Result(width, height, bgraToArgb(bgra, width * height));
+        } finally {
+            call(instance, "jxl_free_result");
+        }
+    }
+
+    private static int[] bgraToArgb(byte[] bgra, int numPixels) {
+        int[] argb = new int[numPixels];
+        for (int i = 0; i < numPixels; i++) {
+            int base = i * 4;
+            argb[i] = (bgra[base] & 0xFF)
+                    | (bgra[base + 1] & 0xFF) << 8
+                    | (bgra[base + 2] & 0xFF) << 16
+                    | (bgra[base + 3] & 0xFF) << 24;
+        }
+        return argb;
+    }
+
+    private static String readError(Instance instance) {
+        try {
+            int ptr = (int) call(instance, "jxl_get_error")[0];
+            int len = (int) call(instance, "jxl_get_error_len")[0];
+            if (ptr == 0 || len <= 0) {
+                return "unknown error";
+            }
+            byte[] message = instance.memory().readBytes(ptr, len);
+            return new String(message, StandardCharsets.UTF_8);
+        } catch (ChicoryException e) {
+            return "unknown error (" + e.getMessage() + ")";
+        }
+    }
+
+    private static long[] call(Instance instance, String name, long... args) {
+        ExportFunction function = instance.export(name);
+        return function.apply(args);
+    }
+}
