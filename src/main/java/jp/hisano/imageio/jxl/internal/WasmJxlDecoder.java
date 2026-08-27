@@ -95,7 +95,20 @@ public final class WasmJxlDecoder {
                         "JPEG XL image too large: " + width + "x" + height);
             }
             byte[] bgra = memory.readBytes(pixelsPtr, (int) byteLength);
-            return new Result(width, height, bgraToArgb(bgra, width * height));
+
+            // If the pixels are not in sRGB, the decoder attaches the ICC
+            // profile of the color space they are in; convert them to sRGB.
+            int[] argb = null;
+            int iccPtr = (int) call(instance, "jxl_get_icc")[0];
+            int iccLen = (int) call(instance, "jxl_get_icc_len")[0];
+            if (iccPtr != 0 && iccLen > 0) {
+                byte[] icc = memory.readBytes(iccPtr, iccLen);
+                argb = IccToSrgbConverter.convert(bgra, width, height, icc);
+            }
+            if (argb == null) {
+                argb = bgraToArgb(bgra, width * height);
+            }
+            return new Result(width, height, argb);
         } finally {
             call(instance, "jxl_free_result");
         }

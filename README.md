@@ -54,15 +54,24 @@ byte[] (JXL file) --> wasm linear memory --> jxl-rs decoder (wasm)
 
 - [`rust/src/lib.rs`](rust/src/lib.rs) exports `jxl_alloc`, `jxl_free`,
   `jxl_decode`, `jxl_get_width`, `jxl_get_height`, `jxl_get_pixels`,
-  `jxl_get_error` and `jxl_free_result`.
+  `jxl_get_icc`, `jxl_get_icc_len`, `jxl_get_error` and `jxl_free_result`.
 - `WasmJxlDecoder` drives those exports through Chicory; each decode uses a
   fresh wasm instance, so decoding is thread-safe and isolated.
 - `JxlImageReader` / `JxlImageReaderSpi` implement the ImageIO contract.
+
+## Color management
+
+When the decoder's output is not already sRGB (e.g. an embedded ICC
+profile, gamma or wide-gamut encodings), the wasm module attaches the ICC
+profile of the output color space (`jxl_get_icc`), and the Java side
+converts the pixels to sRGB with `java.awt.color.ICC_ColorSpace` +
+`ColorConvertOp`. XYB-encoded (lossy) images whose embedded ICC profile
+cannot be used as a decoder output space are decoded straight to sRGB by
+jxl-rs itself. If a profile cannot be parsed, the pixels are delivered
+unconverted rather than failing the decode.
 
 ## Limitations
 
 - Only the first frame of an animation is exposed.
 - Pixels are always returned as 8-bit ARGB; HDR/16-bit data is truncated
   to 8 bits per sample.
-- ICC profiles are not applied with a CMS; images with unusual color
-  profiles are emitted in the decoder's output profile.

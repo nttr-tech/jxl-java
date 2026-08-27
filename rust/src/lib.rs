@@ -10,8 +10,8 @@ use std::cell::RefCell;
 
 use jxl::api::states::Initialized;
 use jxl::api::{
-    JxlColorType, JxlDataFormat, JxlDecoder, JxlDecoderOptions, JxlOutputBuffer, JxlPixelFormat,
-    ProcessingResult,
+    JxlColorEncoding, JxlColorProfile, JxlColorType, JxlDataFormat, JxlDecoder, JxlDecoderOptions,
+    JxlOutputBuffer, JxlPixelFormat, ProcessingResult,
 };
 use jxl::headers::extra_channels::ExtraChannel;
 
@@ -20,6 +20,9 @@ struct DecodedImage {
     height: u32,
     /// Interleaved BGRA bytes, `width * height * 4` long.
     bgra: Vec<u8>,
+    /// ICC profile describing the color space of `bgra`, or empty when the
+    /// pixels are already (gray) sRGB and need no conversion.
+    icc: Vec<u8>,
 }
 
 thread_local! {
@@ -100,6 +103,28 @@ pub extern "C" fn jxl_get_pixels() -> *const u8 {
     })
 }
 
+/// Pointer to the ICC profile bytes describing the color space of the pixel
+/// data, or null when the pixels are already sRGB (no conversion needed).
+/// Valid until `jxl_free_result` or the next `jxl_decode` call.
+#[no_mangle]
+pub extern "C" fn jxl_get_icc() -> *const u8 {
+    RESULT.with(|r| {
+        r.borrow().as_ref().map_or(std::ptr::null(), |i| {
+            if i.icc.is_empty() {
+                std::ptr::null()
+            } else {
+                i.icc.as_ptr()
+            }
+        })
+    })
+}
+
+/// Length in bytes of the ICC profile, 0 when the pixels are already sRGB.
+#[no_mangle]
+pub extern "C" fn jxl_get_icc_len() -> usize {
+    RESULT.with(|r| r.borrow().as_ref().map_or(0, |i| i.icc.len()))
+}
+
 /// Releases the memory held by the last decode result.
 #[no_mangle]
 pub extern "C" fn jxl_free_result() {
@@ -167,6 +192,8 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         .set_pixel_format(pixel_format)
         .map_err(|e| format!("failed to set pixel format: {e}"))?;
 
+    let icc = output_profile_icc(decoder.output_color_profile());
+
     let samples_per_pixel = color_type.samples_per_pixel();
     let bytes_per_row = width * samples_per_pixel;
     let mut interleaved = vec![0u8; bytes_per_row * height];
@@ -200,7 +227,23 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         width: width as u32,
         height: height as u32,
         bgra,
+        icc,
     })
+}
+
+/// Returns the ICC profile bytes for the profile the output pixels are in,
+/// or an empty vector when the pixels are already (gray) sRGB or when no
+/// profile can be produced (in which case no conversion is attempted).
+fn output_profile_icc(profile: &JxlColorProfile) -> Vec<u8> {
+    let already_srgb = profile
+        .same_color_encoding(&JxlColorProfile::Simple(JxlColorEncoding::srgb(false)))
+        || profile.same_color_encoding(&JxlColorProfile::Simple(JxlColorEncoding::srgb(true)));
+    if already_srgb {
+        return Vec::new();
+    }
+    profile
+        .try_as_icc()
+        .map_or_else(Vec::new, |icc| icc.into_owned())
 }
 
 fn to_bgra(
@@ -336,6 +379,48 @@ mod tests {
             image.bgra.len(),
             image.width as usize * image.height as usize * 4
         );
+    }
+
+    #[test]
+    fn srgb_image_has_no_icc_profile() {
+        // strategic_solid_blue.jxl uses the true sRGB transfer function.
+        let image = decode_impl(&read_test_file("strategic_solid_blue.jxl")).unwrap();
+        assert!(image.icc.is_empty());
+    }
+
+    #[test]
+    fn gamma_image_exposes_icc_bytes() {
+        // The 3x3 test images use a gamma 2.2 transfer function, which is
+        // not sRGB, so an ICC profile must be attached for conversion.
+        let image = decode_impl(&read_test_file("3x3_srgb_lossless.jxl")).unwrap();
+        assert!(!image.icc.is_empty());
+        assert_eq!(&image.icc[36..40], b"acsp");
+    }
+
+    #[test]
+    fn lossless_image_with_icc_profile_exposes_icc_bytes() {
+        let image = decode_impl(&read_test_file("with_icc.jxl")).unwrap();
+        assert!(!image.icc.is_empty());
+        // Every ICC profile has the 'acsp' signature at offset 36.
+        assert_eq!(&image.icc[36..40], b"acsp");
+    }
+
+    #[test]
+    fn lossy_image_with_icc_profile_outputs_srgb() {
+        // XYB-encoded images cannot be output to an ICC profile without a
+        // CMS, so the decoder falls back to sRGB output: no conversion needed.
+        let image = decode_impl(&read_test_file("lossy_with_icc.jxl")).unwrap();
+        assert!(image.icc.is_empty());
+    }
+
+    #[test]
+    fn grayscale_image_with_icc_profile_exposes_icc_bytes() {
+        let image = decode_impl(&read_test_file(
+            "small_grayscale_patches_modular_with_icc.jxl",
+        ))
+        .unwrap();
+        assert!(!image.icc.is_empty());
+        assert_eq!(&image.icc[36..40], b"acsp");
     }
 
     #[test]

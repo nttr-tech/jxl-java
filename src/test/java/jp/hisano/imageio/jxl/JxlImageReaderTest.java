@@ -32,23 +32,47 @@ public class JxlImageReaderTest {
 
     /**
      * The 3x3 test images contain, in scanline order: red, green, blue,
-     * (128,64,64), (64,128,64), (64,64,128), white, gray, black.
+     * (128,64,64), (64,128,64), (64,64,128), white, gray, black — encoded
+     * with a gamma 2.2 transfer function.
      */
-    private static int[] expected3x3Argb(int alpha) {
-        int[] rgb = {
-            0xFF0000, 0x00FF00, 0x0000FF,
-            0x804040, 0x408040, 0x404080,
-            0xFFFFFF, 0x808080, 0x000000,
-        };
-        int[] argb = new int[rgb.length];
-        for (int i = 0; i < rgb.length; i++) {
-            argb[i] = (alpha << 24) | rgb[i];
-        }
-        return argb;
+    private static final int[] RAW_3X3_RGB = {
+        0xFF0000, 0x00FF00, 0x0000FF,
+        0x804040, 0x408040, 0x404080,
+        0xFFFFFF, 0x808080, 0x000000,
+    };
+
+    /**
+     * The 3x3 test images use gamma 2.2, so the plugin color-manages them to
+     * sRGB. This computes the reference conversion of one 8-bit sample.
+     */
+    private static int gamma22ToSrgb(int value) {
+        double linear = Math.pow(value / 255.0, 2.2);
+        double srgb = linear <= 0.0031308
+                ? 12.92 * linear
+                : 1.055 * Math.pow(linear, 1.0 / 2.4) - 0.055;
+        return (int) Math.round(srgb * 255.0);
     }
 
     private static int[] pixelsOf(BufferedImage image) {
         return image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
+    }
+
+    private static void assert3x3PixelsConvertedToSrgb(BufferedImage image, int alpha) {
+        int[] pixels = pixelsOf(image);
+        assertEquals(RAW_3X3_RGB.length, pixels.length);
+        for (int i = 0; i < pixels.length; i++) {
+            assertEquals("alpha of pixel " + i, alpha, (pixels[i] >>> 24));
+            for (int shift = 16; shift >= 0; shift -= 8) {
+                int expected = gamma22ToSrgb((RAW_3X3_RGB[i] >> shift) & 0xFF);
+                int actual = (pixels[i] >> shift) & 0xFF;
+                // Tolerance 1 distinguishes converted output from raw
+                // gamma 2.2 values (e.g. raw 64 vs converted 62).
+                assertTrue(
+                        "channel at shift " + shift + " of pixel " + i
+                                + ": expected ~" + expected + " but was " + actual,
+                        Math.abs(expected - actual) <= 1);
+            }
+        }
     }
 
     @Test
@@ -59,8 +83,7 @@ public class JxlImageReaderTest {
         assertEquals(3, image.getWidth());
         assertEquals(3, image.getHeight());
         assertEquals(BufferedImage.TYPE_INT_ARGB, image.getType());
-        assertEquals(
-                Arrays.toString(expected3x3Argb(0xFF)), Arrays.toString(pixelsOf(image)));
+        assert3x3PixelsConvertedToSrgb(image, 0xFF);
     }
 
     @Test
@@ -68,8 +91,30 @@ public class JxlImageReaderTest {
         BufferedImage image = ImageIO.read(testFile("3x3a_srgb_lossless.jxl"));
 
         assertNotNull(image);
-        assertEquals(
-                Arrays.toString(expected3x3Argb(0x80)), Arrays.toString(pixelsOf(image)));
+        assert3x3PixelsConvertedToSrgb(image, 0x80);
+    }
+
+    @Test
+    public void imageIoReadConvertsEmbeddedIccProfileToSrgb() throws IOException {
+        BufferedImage image = ImageIO.read(testFile("with_icc.jxl"));
+
+        assertNotNull(image);
+        assertTrue(image.getWidth() > 0 && image.getHeight() > 0);
+    }
+
+    @Test
+    public void imageIoReadConvertsGrayscaleIccProfileToSrgb() throws IOException {
+        BufferedImage image =
+                ImageIO.read(testFile("small_grayscale_patches_modular_with_icc.jxl"));
+
+        assertNotNull(image);
+        for (int pixel : pixelsOf(image)) {
+            int r = (pixel >> 16) & 0xFF;
+            int g = (pixel >> 8) & 0xFF;
+            int b = pixel & 0xFF;
+            assertEquals("grayscale pixel must have R == G", r, g);
+            assertEquals("grayscale pixel must have G == B", g, b);
+        }
     }
 
     @Test
