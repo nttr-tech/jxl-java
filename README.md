@@ -33,6 +33,14 @@ codestream (`FF 0A`) and the ISOBMFF container format are supported.
 ./gradlew build
 ```
 
+This produces two jars under `build/libs/`:
+
+- `imageio-jxl-<version>.jar` — the plain library; requires
+  `com.dylibso.chicory:runtime` on the classpath.
+- `imageio-jxl-<version>-all.jar` — self-contained fat jar with the
+  Chicory runtime shaded under `jp.hisano.imageio.jxl.internal.chicory`, so
+  it never conflicts with another Chicory version in the application.
+
 The build pipeline is:
 
 1. `cargoBuildWasm` — compiles the [`rust/`](rust) crate (a thin C-ABI

@@ -1,6 +1,7 @@
 plugins {
     `java-library`
     id("at.released.wasm2class.plugin") version "0.5.0"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 group = "jp.hisano.imageio"
@@ -62,4 +63,12 @@ tasks.withType<Test>().configureEach {
     testLogging {
         events("passed", "skipped", "failed")
     }
+}
+
+// Self-contained jar (imageio-jxl-<version>-all.jar) with the Chicory
+// runtime shaded under jp.hisano.imageio.jxl.internal so it cannot clash with
+// another Chicory version on the application classpath.
+tasks.shadowJar {
+    relocate("com.dylibso.chicory", "jp.hisano.imageio.jxl.internal.chicory")
+    exclude("META-INF/maven/**")
 }
