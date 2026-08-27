@@ -1,5 +1,6 @@
 package jp.hisano.imageio.jxl.internal;
 
+import com.dylibso.chicory.runtime.ByteArrayMemory;
 import com.dylibso.chicory.runtime.ExportFunction;
 import com.dylibso.chicory.runtime.Instance;
 import com.dylibso.chicory.runtime.Memory;
@@ -66,6 +67,9 @@ public final class WasmJxlDecoder {
         try {
             Instance instance = Instance.builder(ModuleHolder.MODULE)
                     .withMachineFactory(JxlDecoderWasm::create)
+                    // Plain byte-array memory avoids the ByteBuffer
+                    // indirection of the default memory implementation.
+                    .withMemoryFactory(ByteArrayMemory::new)
                     .withStart(false)
                     .build();
             return decodeWithInstance(instance, data);
