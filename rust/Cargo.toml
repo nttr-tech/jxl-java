@@ -14,7 +14,7 @@ jxl = { git = "https://github.com/libjxl/jxl-rs.git", rev = "d7ecec1e3b39c2beb3e
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 panic = "abort"
 strip = true
 

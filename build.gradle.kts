@@ -50,9 +50,9 @@ wasm2class {
         // Generates jp.hisano.imageio.jxl.internal.JxlDecoderWasmModule.
         create("jxlDecoderWasm") {
             wasm.fileProvider(cargoBuildWasm.map { it.outputs.files.singleFile })
-            // Some decoder functions exceed the JVM method size limit and
-            // stay on the Chicory interpreter.
-            interpreterFallback = at.released.wasm2class.InterpreterFallback.SILENT
+            // All functions must compile to bytecode; the Rust profile uses
+            // thin LTO so no wasm function exceeds the JVM method size limit.
+            interpreterFallback = at.released.wasm2class.InterpreterFallback.FAIL
         }
     }
 }

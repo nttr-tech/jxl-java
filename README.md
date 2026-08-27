@@ -40,7 +40,9 @@ The build pipeline is:
 2. `precompileWasm2Class` — the
    [wasm2class](https://github.com/illarionov/wasm2class-gradle-plugin)
    plugin translates the WebAssembly module into Chicory AOT class files.
-   A few oversized decoder functions fall back to the Chicory interpreter.
+   The Rust profile uses thin LTO instead of fat LTO so that no single
+   wasm function exceeds the JVM method size limit; every function is
+   AOT-compiled (`interpreterFallback = FAIL` guards against regressions).
 3. Regular Java compilation of the ImageIO plugin and its tests.
 
 ## Architecture
