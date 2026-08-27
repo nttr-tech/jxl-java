@@ -73,6 +73,14 @@ tasks.register<JavaExec>("runViewer") {
     mainClass = "jp.hisano.imageio.jxl.sample.JxlImageViewer"
 }
 
+// Runs the staged decode benchmark from the test sources.
+tasks.register<JavaExec>("runBenchmark") {
+    group = "verification"
+    description = "Runs DecodeBenchmark (staged decode timings, cold and warm)."
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass = "jp.hisano.imageio.jxl.benchmark.DecodeBenchmark"
+}
+
 // Self-contained jar (imageio-jxl-<version>-all.jar) with the Chicory
 // runtime shaded under jp.hisano.imageio.jxl.internal so it cannot clash with
 // another Chicory version on the application classpath.
