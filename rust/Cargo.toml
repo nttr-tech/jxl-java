@@ -1,0 +1,20 @@
+[package]
+name = "jxl_wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Disable SIMD features: the wasm is executed by Chicory, so we stay with
+# scalar code for maximum runtime compatibility.
+jxl = { git = "https://github.com/libjxl/jxl-rs.git", rev = "d7ecec1e3b39c2beb3ec9fbb75ca8b3ffd0922f2", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"
+strip = true
+
