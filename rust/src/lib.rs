@@ -166,21 +166,23 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         .and_then(|_| width.checked_mul(height)?.checked_mul(4))
         .ok_or("image dimensions overflow")?;
 
-    // Request 8-bit output in the image's own color layout, interleaving the
-    // alpha channel (if any) into the color buffer. This mirrors what
-    // jxl_cli does, and is converted to BGRA below.
+    // Request 8-bit output, interleaving the alpha channel (if any) into the
+    // color buffer. Color images are requested directly in BGR(A) order so
+    // that the decoder writes the final layout and no extra full-image
+    // conversion pass (or second buffer) is needed for them below.
     let current_format = decoder.current_pixel_format().clone();
     let alpha_channel = info
         .extra_channels
         .iter()
         .position(|c| c.ec_type == ExtraChannel::Alpha);
+    let base_color_type = match current_format.color_type {
+        JxlColorType::Rgb | JxlColorType::Rgba => JxlColorType::Bgr,
+        other => other,
+    };
     let color_type = if alpha_channel.is_some() {
-        current_format
-            .color_type
-            .add_alpha()
-            .unwrap_or(current_format.color_type)
+        base_color_type.add_alpha().unwrap_or(base_color_type)
     } else {
-        current_format.color_type
+        base_color_type
     };
     let pixel_format = JxlPixelFormat {
         color_type,
@@ -222,7 +224,11 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         }
     }
 
-    let bgra = to_bgra(&interleaved, color_type, width * height)?;
+    let bgra = if color_type == JxlColorType::Bgra {
+        interleaved
+    } else {
+        to_bgra(&interleaved, color_type, width * height)?
+    };
     Ok(DecodedImage {
         width: width as u32,
         height: height as u32,
