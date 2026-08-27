@@ -4,6 +4,7 @@ import com.dylibso.chicory.runtime.ExportFunction;
 import com.dylibso.chicory.runtime.Instance;
 import com.dylibso.chicory.runtime.Memory;
 import com.dylibso.chicory.wasm.ChicoryException;
+import com.dylibso.chicory.wasm.WasmModule;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,11 @@ import java.nio.charset.StandardCharsets;
 public final class WasmJxlDecoder {
 
     private WasmJxlDecoder() {
+    }
+
+    /** Parses the wasm module lazily, once per JVM; parsing is pure CPU work. */
+    private static final class ModuleHolder {
+        static final WasmModule MODULE = JxlDecoderWasm.load();
     }
 
     /** The first frame of a decoded JPEG XL image. */
@@ -58,7 +64,7 @@ public final class WasmJxlDecoder {
             throw new IOException("Empty JPEG XL input");
         }
         try {
-            Instance instance = Instance.builder(JxlDecoderWasm.load())
+            Instance instance = Instance.builder(ModuleHolder.MODULE)
                     .withMachineFactory(JxlDecoderWasm::create)
                     .withStart(false)
                     .build();
