@@ -8,8 +8,9 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-# Disable SIMD features: the wasm is executed by Chicory, so we stay with
-# scalar code for maximum runtime compatibility.
+# Disable SIMD features: the wasm is executed by Chicory, whose AOT compiler
+# does not support v128 instructions (SIMD is interpreter-only as of 1.5),
+# so we stay with scalar code.
 jxl = { git = "https://github.com/libjxl/jxl-rs.git", rev = "d7ecec1e3b39c2beb3ec9fbb75ca8b3ffd0922f2", default-features = false }
 
 [profile.release]

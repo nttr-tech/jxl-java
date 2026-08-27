@@ -70,9 +70,28 @@ byte[] (JXL file) --> wasm linear memory --> jxl-rs decoder (wasm)
 - [`rust/src/lib.rs`](rust/src/lib.rs) exports `jxl_alloc`, `jxl_free`,
   `jxl_decode`, `jxl_get_width`, `jxl_get_height`, `jxl_get_pixels`,
   `jxl_get_icc`, `jxl_get_icc_len`, `jxl_get_error` and `jxl_free_result`.
-- `WasmJxlDecoder` drives those exports through Chicory; each decode uses a
-  fresh wasm instance, so decoding is thread-safe and isolated.
+  Color images are decoded directly in BGR(A) order, so no separate
+  channel-reordering pass over the pixels is needed inside the wasm.
+- `WasmJxlDecoder` drives those exports through Chicory; the parsed wasm
+  module is cached per JVM, and each decode uses a fresh wasm instance
+  (sub-millisecond to create), so decoding is thread-safe and isolated.
 - `JxlImageReader` / `JxlImageReaderSpi` implement the ImageIO contract.
+
+## Performance
+
+Decoding runs the full jxl-rs pixel pipeline as scalar (non-SIMD) code on
+the JVM, so it is CPU-bound inside the wasm: expect roughly 1–2.5 seconds
+per megapixel on typical desktop hardware once the JVM is warmed up, and
+about 1.5× that for the first image in a JVM (JIT warmup). Everything
+else — module loading, instance creation, pixel transfer and ARGB
+conversion — is a few milliseconds combined. The Chicory AOT compiler does
+not yet support wasm SIMD (`v128`; Chicory 1.5 supports SIMD only in its
+Java 21+ interpreter), so the jxl-rs `simd128` code path cannot be used.
+A staged benchmark is available via:
+
+```
+./gradlew runBenchmark [--args="path/to/image.jxl ..."]
+```
 
 ## Color management
 
