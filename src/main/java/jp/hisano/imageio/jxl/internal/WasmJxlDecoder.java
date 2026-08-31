@@ -49,7 +49,11 @@ public final class WasmJxlDecoder {
             return height;
         }
 
-        /** Pixels in {@code 0xAARRGGBB} order, row-major, {@code width * height} long. */
+        /**
+         * Pixels in {@code 0xAARRGGBB} order, row-major, {@code width * height}
+         * long. The color channels are premultiplied by alpha, matching
+         * {@code BufferedImage.TYPE_INT_ARGB_PRE}.
+         */
         public int[] getArgb() {
             return argb;
         }
@@ -59,7 +63,7 @@ public final class WasmJxlDecoder {
      * Decodes the first frame of the given JPEG XL file.
      *
      * @param data the complete file contents (codestream or container)
-     * @return the decoded image as ARGB pixels
+     * @return the decoded image as premultiplied ARGB pixels
      * @throws IOException if the data is not a valid JPEG XL file or decoding fails
      */
     public static Result decode(byte[] data) throws IOException {
@@ -154,7 +158,8 @@ public final class WasmJxlDecoder {
     }
 
     private static int[] bgraToArgb(byte[] bgra, int numPixels) {
-        // BGRA bytes read as little-endian ints are exactly 0xAARRGGBB.
+        // Premultiplied BGRA bytes read as little-endian ints are exactly
+        // premultiplied 0xAARRGGBB.
         int[] argb = new int[numPixels];
         ByteBuffer.wrap(bgra).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(argb);
         return argb;

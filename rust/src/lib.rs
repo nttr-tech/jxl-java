@@ -4,8 +4,9 @@
 //! The exported API is stateless: a single [`jxl_decode`] call decodes a
 //! complete JPEG XL file passed as a byte array and returns the first frame
 //! through output pointer arguments as interleaved BGRA bytes (8 bits per
-//! sample). When those bytes are read as little-endian 32-bit integers they
-//! match Java's ARGB pixel layout (`0xAARRGGBB`). Every buffer returned
+//! sample) with the color channels premultiplied by alpha. When those bytes
+//! are read as little-endian 32-bit integers they match Java's premultiplied
+//! ARGB pixel layout (`TYPE_INT_ARGB_PRE`, `0xAARRGGBB`). Every buffer returned
 //! through an output argument is allocated inside the wasm linear memory and
 //! must be released by the caller with [`jxl_free`].
 
@@ -19,7 +20,8 @@ use jxl::headers::extra_channels::ExtraChannel;
 struct DecodedImage {
     width: u32,
     height: u32,
-    /// Interleaved BGRA bytes, `width * height * 4` long.
+    /// Interleaved BGRA bytes, `width * height * 4` long. The color
+    /// channels are premultiplied by alpha.
     bgra: Vec<u8>,
     /// ICC profile describing the color space of `bgra`, or empty when the
     /// pixels are already (gray) sRGB and need no conversion.
@@ -55,8 +57,9 @@ pub unsafe extern "C" fn jxl_free(ptr: *mut u8, len: usize) {
 ///
 /// Returns 0 on success: `output_image_width` / `output_image_height` hold
 /// the image size, `output_image_bgra_bytes` points to the interleaved BGRA
-/// pixel bytes (`width * height * 4` bytes, ARGB when read as little-endian
-/// 32-bit integers), and `output_image_icc_bytes` points to the ICC profile
+/// pixel bytes (`width * height * 4` bytes, color channels premultiplied by
+/// alpha, premultiplied ARGB when read as little-endian 32-bit integers),
+/// and `output_image_icc_bytes` points to the ICC profile
 /// describing their color space (null and 0 when the pixels are already
 /// sRGB and need no conversion).
 ///
@@ -132,7 +135,14 @@ fn leak_bytes(bytes: Vec<u8>) -> (*mut u8, usize) {
 fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
     let mut input: &[u8] = data;
 
-    let decoder = JxlDecoder::<Initialized>::new(JxlDecoderOptions::default());
+    // Request premultiplied alpha output: it is what Java's fastest
+    // translucent image type (TYPE_INT_ARGB_PRE) stores, and jxl-rs
+    // premultiplies in float precision inside the render pipeline (skipping
+    // files whose alpha is already associated), so no 8-bit conversion pass
+    // is needed later.
+    let mut options = JxlDecoderOptions::default();
+    options.premultiply_output = true;
+    let decoder = JxlDecoder::<Initialized>::new(options);
     let mut decoder = match decoder
         .process(&mut input, None)
         .map_err(|e| format!("failed to parse image header: {e}"))?
@@ -332,11 +342,42 @@ mod tests {
         assert_eq!(image.bgra, expected_3x3_bgra(255));
     }
 
+    /// Reference premultiplication matching the decoder: multiply in float
+    /// and round to the nearest 8-bit value.
+    fn premultiply(value: u8, alpha: u8) -> u8 {
+        (f32::from(value) * f32::from(alpha) / 255.0 + 0.5) as u8
+    }
+
     #[test]
-    fn decodes_alpha_image_with_interleaved_alpha() {
+    fn decodes_alpha_image_with_premultiplied_interleaved_alpha() {
         let image = decode_impl(&read_test_file("3x3a_srgb_lossless.jxl")).unwrap();
         assert_eq!((image.width, image.height), (3, 3));
-        assert_eq!(image.bgra, expected_3x3_bgra(128));
+        let alpha = 128;
+        let expected_bytes: Vec<u8> = expected_3x3_bgra(alpha)
+            .iter()
+            .enumerate()
+            .map(|(index, &value)| {
+                if index % 4 == 3 {
+                    value
+                } else {
+                    premultiply(value, alpha)
+                }
+            })
+            .collect();
+        assert_eq!(image.bgra.len(), expected_bytes.len());
+        for (index, (&actual_value, &expected_value)) in
+            image.bgra.iter().zip(expected_bytes.iter()).enumerate()
+        {
+            // The decoder dithers when converting float samples to 8 bits,
+            // so premultiplied color values with a fractional part may land
+            // one step away from the rounded reference. Alpha values are
+            // integers and stay exact.
+            let tolerance = if index % 4 == 3 { 0 } else { 1 };
+            assert!(
+                (i16::from(actual_value) - i16::from(expected_value)).abs() <= tolerance,
+                "byte {index}: expected about {expected_value} but was {actual_value}"
+            );
+        }
     }
 
     #[test]

@@ -20,12 +20,15 @@ final class IccToSrgbConverter {
     }
 
     /**
-     * Converts BGRA pixel bytes from the color space described by
-     * {@code iccBytes} to sRGB and packs them as ARGB integers. The alpha
-     * channel is passed through unchanged.
+     * Converts premultiplied BGRA pixel bytes from the color space described
+     * by {@code iccBytes} to sRGB and packs them as premultiplied ARGB
+     * integers. {@link ColorConvertOp} expects straight (non-premultiplied)
+     * samples, so the color samples are un-premultiplied before the
+     * conversion and re-premultiplied afterwards; the alpha channel itself is
+     * passed through unchanged.
      *
-     * @return the converted ARGB pixels, or {@code null} if the profile is
-     *     unusable and the caller should fall back to no conversion
+     * @return the converted premultiplied ARGB pixels, or {@code null} if the
+     *     profile is unusable and the caller should fall back to no conversion
      */
     static int[] convert(byte[] bgra, int width, int height, byte[] iccBytes) {
         try {
@@ -55,13 +58,14 @@ final class IccToSrgbConverter {
         byte[] source = new byte[numPixels * bands];
         if (bands == 3) {
             for (int i = 0; i < numPixels; i++) {
-                source[i * 3] = bgra[i * 4 + 2];
-                source[i * 3 + 1] = bgra[i * 4 + 1];
-                source[i * 3 + 2] = bgra[i * 4];
+                int alpha = bgra[i * 4 + 3] & 0xFF;
+                source[i * 3] = unpremultiply(bgra[i * 4 + 2], alpha);
+                source[i * 3 + 1] = unpremultiply(bgra[i * 4 + 1], alpha);
+                source[i * 3 + 2] = unpremultiply(bgra[i * 4], alpha);
             }
         } else {
             for (int i = 0; i < numPixels; i++) {
-                source[i] = bgra[i * 4];
+                source[i] = unpremultiply(bgra[i * 4], bgra[i * 4 + 3] & 0xFF);
             }
         }
 
@@ -82,12 +86,30 @@ final class IccToSrgbConverter {
         byte[] srgbBytes = ((DataBufferByte) srgbRaster.getDataBuffer()).getData();
         int[] argb = new int[numPixels];
         for (int i = 0; i < numPixels; i++) {
-            argb[i] = (bgra[i * 4 + 3] & 0xFF) << 24
-                    | (srgbBytes[i * 3] & 0xFF) << 16
-                    | (srgbBytes[i * 3 + 1] & 0xFF) << 8
-                    | (srgbBytes[i * 3 + 2] & 0xFF);
+            int alpha = bgra[i * 4 + 3] & 0xFF;
+            argb[i] = alpha << 24
+                    | premultiply(srgbBytes[i * 3], alpha) << 16
+                    | premultiply(srgbBytes[i * 3 + 1], alpha) << 8
+                    | premultiply(srgbBytes[i * 3 + 2], alpha);
         }
         return argb;
+    }
+
+    private static byte unpremultiply(byte value, int alpha) {
+        if (alpha == 0xFF) {
+            return value;
+        }
+        if (alpha == 0) {
+            return 0;
+        }
+        return (byte) Math.min(0xFF, ((value & 0xFF) * 0xFF + alpha / 2) / alpha);
+    }
+
+    private static int premultiply(byte value, int alpha) {
+        if (alpha == 0xFF) {
+            return value & 0xFF;
+        }
+        return ((value & 0xFF) * alpha + 0x7F) / 0xFF;
     }
 
     private static int[] bandOffsets(int bands) {

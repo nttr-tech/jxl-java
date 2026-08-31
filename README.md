@@ -15,8 +15,10 @@ BufferedImage image = ImageIO.read(new File("image.jxl"));
 ```
 
 The reader decodes the first frame of the image (including the first frame
-of animations) as a `TYPE_INT_ARGB` `BufferedImage`. Both the bare
-codestream (`FF 0A`) and the ISOBMFF container format are supported.
+of animations) as a `TYPE_INT_ARGB_PRE` (premultiplied alpha)
+`BufferedImage`, the translucent image type that Java 2D composites and
+displays the fastest. Both the bare codestream (`FF 0A`) and the ISOBMFF
+container format are supported.
 
 A sample Swing viewer is included in the test sources
 (`jp.hisano.imageio.jxl.sample.JxlImageViewer`); launch it with:
@@ -64,7 +66,7 @@ The build pipeline is:
 
 ```
 byte[] (JXL file) --> wasm linear memory --> jxl-rs decoder (wasm)
-    --> BGRA bytes --> int[] ARGB --> BufferedImage (TYPE_INT_ARGB)
+    --> premultiplied BGRA bytes --> int[] ARGB --> BufferedImage (TYPE_INT_ARGB_PRE)
 ```
 
 - [`rust/src/lib.rs`](rust/src/lib.rs) exports `jxl_alloc`, `jxl_free`,
@@ -107,5 +109,6 @@ unconverted rather than failing the decode.
 ## Limitations
 
 - Only the first frame of an animation is exposed.
-- Pixels are always returned as 8-bit ARGB; HDR/16-bit data is truncated
-  to 8 bits per sample.
+- Pixels are always returned as 8-bit premultiplied ARGB; HDR/16-bit data
+  is truncated to 8 bits per sample, and colors of nearly transparent
+  pixels lose precision to the premultiplication.

@@ -57,7 +57,8 @@ public class JxlImageReaderTest {
         return image.getRGB(0, 0, image.getWidth(), image.getHeight(), null, 0, image.getWidth());
     }
 
-    private static void assert3x3PixelsConvertedToSrgb(BufferedImage image, int alpha) {
+    private static void assert3x3PixelsConvertedToSrgb(
+            BufferedImage image, int alpha, int tolerance) {
         int[] pixels = pixelsOf(image);
         assertEquals(RAW_3X3_RGB.length, pixels.length);
         for (int i = 0; i < pixels.length; i++) {
@@ -65,12 +66,10 @@ public class JxlImageReaderTest {
             for (int shift = 16; shift >= 0; shift -= 8) {
                 int expected = gamma22ToSrgb((RAW_3X3_RGB[i] >> shift) & 0xFF);
                 int actual = (pixels[i] >> shift) & 0xFF;
-                // Tolerance 1 distinguishes converted output from raw
-                // gamma 2.2 values (e.g. raw 64 vs converted 62).
                 assertTrue(
                         "channel at shift " + shift + " of pixel " + i
                                 + ": expected ~" + expected + " but was " + actual,
-                        Math.abs(expected - actual) <= 1);
+                        Math.abs(expected - actual) <= tolerance);
             }
         }
     }
@@ -82,8 +81,10 @@ public class JxlImageReaderTest {
         assertNotNull("ImageIO did not find a JPEG XL reader", image);
         assertEquals(3, image.getWidth());
         assertEquals(3, image.getHeight());
-        assertEquals(BufferedImage.TYPE_INT_ARGB, image.getType());
-        assert3x3PixelsConvertedToSrgb(image, 0xFF);
+        assertEquals(BufferedImage.TYPE_INT_ARGB_PRE, image.getType());
+        // Tolerance 1 distinguishes converted output from raw gamma 2.2
+        // values (e.g. raw 64 vs converted 62).
+        assert3x3PixelsConvertedToSrgb(image, 0xFF, 1);
     }
 
     @Test
@@ -91,7 +92,15 @@ public class JxlImageReaderTest {
         BufferedImage image = ImageIO.read(testFile("3x3a_srgb_lossless.jxl"));
 
         assertNotNull(image);
-        assert3x3PixelsConvertedToSrgb(image, 0x80);
+        // The image is stored premultiplied at 8 bits and getRGB()
+        // un-premultiplies it. At alpha 0x80 the dithered premultiplication
+        // in the decoder, the straight/premultiplied round-trip around the
+        // ICC conversion, and the final un-premultiplication each quantize
+        // to 8 bits, and un-premultiplying doubles those errors, so a
+        // channel can drift a few steps from the straight-alpha reference.
+        // Verifying the sRGB conversion itself down to one step is the job
+        // of the opaque-image test above.
+        assert3x3PixelsConvertedToSrgb(image, 0x80, 4);
     }
 
     @Test

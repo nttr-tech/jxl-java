@@ -22,7 +22,8 @@ import javax.imageio.stream.ImageInputStream;
  *
  * <p>The reader exposes the first frame of the image (for animations, the
  * first animation frame) as a {@link BufferedImage} of type
- * {@code TYPE_INT_ARGB}.
+ * {@code TYPE_INT_ARGB_PRE} (premultiplied alpha), the translucent image
+ * type that Java 2D composites and displays the fastest.
  */
 public final class JxlImageReader extends ImageReader {
 
@@ -59,7 +60,8 @@ public final class JxlImageReader extends ImageReader {
     public Iterator<ImageTypeSpecifier> getImageTypes(int imageIndex) throws IOException {
         checkIndex(imageIndex);
         return Collections.singletonList(
-                        ImageTypeSpecifier.createFromBufferedImageType(BufferedImage.TYPE_INT_ARGB))
+                        ImageTypeSpecifier.createFromBufferedImageType(
+                                BufferedImage.TYPE_INT_ARGB_PRE))
                 .iterator();
     }
 
@@ -80,7 +82,7 @@ public final class JxlImageReader extends ImageReader {
         WasmJxlDecoder.Result result = decode();
 
         BufferedImage image = new BufferedImage(
-                result.getWidth(), result.getHeight(), BufferedImage.TYPE_INT_ARGB);
+                result.getWidth(), result.getHeight(), BufferedImage.TYPE_INT_ARGB_PRE);
         int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
         System.arraycopy(result.getArgb(), 0, pixels, 0, pixels.length);
         return image;
