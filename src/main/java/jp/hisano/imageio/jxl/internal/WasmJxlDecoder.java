@@ -80,41 +80,68 @@ public final class WasmJxlDecoder {
         }
     }
 
+    /**
+     * Size in bytes of the {@code jxl_decode} output slot area: eight 4-byte
+     * slots (wasm32 pointers and sizes are 4 bytes) holding width, height,
+     * BGRA bytes pointer/length, ICC bytes pointer/length and error message
+     * pointer/length.
+     */
+    private static final int OUTPUT_SLOTS_LENGTH = 8 * 4;
+
     private static Result decodeWithInstance(Instance instance, byte[] data) throws IOException {
         Memory memory = instance.memory();
 
-        int inputPtr = (int) call(instance, "jxl_alloc", data.length)[0];
+        int outputSlots = (int) call(instance, "jxl_alloc", OUTPUT_SLOTS_LENGTH)[0];
         try {
-            memory.write(inputPtr, data);
-            long status = call(instance, "jxl_decode", inputPtr, data.length)[0];
-            if (status != 0) {
-                throw new IOException("Failed to decode JPEG XL image: " + readError(instance));
+            int inputPointer = (int) call(instance, "jxl_alloc", data.length)[0];
+            long status;
+            try {
+                memory.write(inputPointer, data);
+                status = call(instance, "jxl_decode",
+                        inputPointer, data.length,
+                        outputSlots, outputSlots + 4,
+                        outputSlots + 8, outputSlots + 12,
+                        outputSlots + 16, outputSlots + 20,
+                        outputSlots + 24, outputSlots + 28)[0];
+            } finally {
+                call(instance, "jxl_free", inputPointer, data.length);
             }
-        } finally {
-            call(instance, "jxl_free", inputPtr, data.length);
-        }
+            if (status != 0) {
+                throw new IOException(
+                        "Failed to decode JPEG XL image: " + readErrorMessage(instance, outputSlots));
+            }
 
-        try {
-            int width = (int) call(instance, "jxl_get_width")[0];
-            int height = (int) call(instance, "jxl_get_height")[0];
-            int pixelsPtr = (int) call(instance, "jxl_get_pixels")[0];
-            if (width <= 0 || height <= 0 || pixelsPtr == 0) {
+            int width = memory.readInt(outputSlots);
+            int height = memory.readInt(outputSlots + 4);
+            int bgraPointer = memory.readInt(outputSlots + 8);
+            int bgraLength = memory.readInt(outputSlots + 12);
+            int iccPointer = memory.readInt(outputSlots + 16);
+            int iccLength = memory.readInt(outputSlots + 20);
+            if (width <= 0 || height <= 0 || bgraPointer == 0) {
                 throw new IOException("JPEG XL decoder returned an empty image");
             }
-            long byteLength = (long) width * height * 4;
-            if (byteLength > Integer.MAX_VALUE) {
-                throw new IOException(
-                        "JPEG XL image too large: " + width + "x" + height);
+            if (bgraLength != (long) width * height * 4) {
+                throw new IOException("JPEG XL image too large: " + width + "x" + height);
             }
-            byte[] bgra = memory.readBytes(pixelsPtr, (int) byteLength);
 
-            // If the pixels are not in sRGB, the decoder attaches the ICC
-            // profile of the color space they are in; convert them to sRGB.
+            byte[] bgra;
+            byte[] icc = null;
+            try {
+                bgra = memory.readBytes(bgraPointer, bgraLength);
+                // If the pixels are not in sRGB, the decoder attaches the ICC
+                // profile of the color space they are in; convert them to sRGB.
+                if (iccPointer != 0 && iccLength > 0) {
+                    icc = memory.readBytes(iccPointer, iccLength);
+                }
+            } finally {
+                call(instance, "jxl_free", bgraPointer, bgraLength);
+                if (iccPointer != 0) {
+                    call(instance, "jxl_free", iccPointer, iccLength);
+                }
+            }
+
             int[] argb = null;
-            int iccPtr = (int) call(instance, "jxl_get_icc")[0];
-            int iccLen = (int) call(instance, "jxl_get_icc_len")[0];
-            if (iccPtr != 0 && iccLen > 0) {
-                byte[] icc = memory.readBytes(iccPtr, iccLen);
+            if (icc != null) {
                 argb = IccToSrgbConverter.convert(bgra, width, height, icc);
             }
             if (argb == null) {
@@ -122,7 +149,7 @@ public final class WasmJxlDecoder {
             }
             return new Result(width, height, argb);
         } finally {
-            call(instance, "jxl_free_result");
+            call(instance, "jxl_free", outputSlots, OUTPUT_SLOTS_LENGTH);
         }
     }
 
@@ -133,15 +160,20 @@ public final class WasmJxlDecoder {
         return argb;
     }
 
-    private static String readError(Instance instance) {
+    private static String readErrorMessage(Instance instance, int outputSlots) {
         try {
-            int ptr = (int) call(instance, "jxl_get_error")[0];
-            int len = (int) call(instance, "jxl_get_error_len")[0];
-            if (ptr == 0 || len <= 0) {
+            Memory memory = instance.memory();
+            int messagePointer = memory.readInt(outputSlots + 24);
+            int messageLength = memory.readInt(outputSlots + 28);
+            if (messagePointer == 0 || messageLength <= 0) {
                 return "unknown error";
             }
-            byte[] message = instance.memory().readBytes(ptr, len);
-            return new String(message, StandardCharsets.UTF_8);
+            try {
+                byte[] message = memory.readBytes(messagePointer, messageLength);
+                return new String(message, StandardCharsets.UTF_8);
+            } finally {
+                call(instance, "jxl_free", messagePointer, messageLength);
+            }
         } catch (ChicoryException e) {
             return "unknown error (" + e.getMessage() + ")";
         }

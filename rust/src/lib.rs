@@ -1,12 +1,13 @@
 //! WebAssembly (wasm32-unknown-unknown) bindings used by the Java ImageIO
 //! plugin in this repository.
 //!
-//! The exported API decodes a complete JPEG XL file passed as a byte array
-//! and produces the first frame as interleaved BGRA bytes (8 bits per
+//! The exported API is stateless: a single [`jxl_decode`] call decodes a
+//! complete JPEG XL file passed as a byte array and returns the first frame
+//! through output pointer arguments as interleaved BGRA bytes (8 bits per
 //! sample). When those bytes are read as little-endian 32-bit integers they
-//! match Java's ARGB pixel layout (`0xAARRGGBB`).
-
-use std::cell::RefCell;
+//! match Java's ARGB pixel layout (`0xAARRGGBB`). Every buffer returned
+//! through an output argument is allocated inside the wasm linear memory and
+//! must be released by the caller with [`jxl_free`].
 
 use jxl::api::states::Initialized;
 use jxl::api::{
@@ -25,11 +26,6 @@ struct DecodedImage {
     icc: Vec<u8>,
 }
 
-thread_local! {
-    static RESULT: RefCell<Option<DecodedImage>> = const { RefCell::new(None) };
-    static LAST_ERROR: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
-}
-
 /// Allocates `len` bytes inside the wasm linear memory and returns a pointer
 /// to them. The caller must release the block with [`jxl_free`].
 #[no_mangle]
@@ -40,10 +36,12 @@ pub extern "C" fn jxl_alloc(len: usize) -> *mut u8 {
     ptr
 }
 
-/// Frees a block previously returned by [`jxl_alloc`] with the same `len`.
+/// Frees a block previously returned by [`jxl_alloc`] or through an output
+/// argument of [`jxl_decode`] with the same `len`.
 ///
 /// # Safety
-/// `ptr` must come from `jxl_alloc(len)` and must not be used afterwards.
+/// `ptr` must come from `jxl_alloc(len)` or from `jxl_decode` paired with
+/// the length `len`, and must not be used afterwards.
 #[no_mangle]
 pub unsafe extern "C" fn jxl_free(ptr: *mut u8, len: usize) {
     if !ptr.is_null() {
@@ -52,95 +50,83 @@ pub unsafe extern "C" fn jxl_free(ptr: *mut u8, len: usize) {
     }
 }
 
-/// Decodes the JPEG XL file stored at `ptr..ptr+len`.
+/// Decodes the JPEG XL file stored at `input_bytes..input_bytes+input_bytes_length`
+/// and returns the first frame through the output arguments.
 ///
-/// Returns 0 on success, in which case the result is available through
-/// `jxl_get_width` / `jxl_get_height` / `jxl_get_pixels`. Returns -1 on
-/// failure, in which case `jxl_get_error` / `jxl_get_error_len` describe the
-/// error. Any previously stored result is dropped.
+/// Returns 0 on success: `output_image_width` / `output_image_height` hold
+/// the image size, `output_image_bgra_bytes` points to the interleaved BGRA
+/// pixel bytes (`width * height * 4` bytes, ARGB when read as little-endian
+/// 32-bit integers), and `output_image_icc_bytes` points to the ICC profile
+/// describing their color space (null and 0 when the pixels are already
+/// sRGB and need no conversion).
+///
+/// Returns -1 on failure: `output_error_message` points to the UTF-8 error
+/// message (not NUL-terminated) and every image output is null or 0.
+///
+/// Every returned buffer is allocated by this function and must be released
+/// by the caller with [`jxl_free`] using the pointer and length pair it was
+/// returned with.
 ///
 /// # Safety
-/// `ptr` must be valid for reads of `len` bytes.
+/// `input_bytes` must be valid for reads of `input_bytes_length` bytes and
+/// every output pointer must be valid for a write of its pointee type.
 #[no_mangle]
-pub unsafe extern "C" fn jxl_decode(ptr: *const u8, len: usize) -> i32 {
+pub unsafe extern "C" fn jxl_decode(
+    input_bytes: *const u8,
+    input_bytes_length: usize,
+    output_image_width: *mut u32,
+    output_image_height: *mut u32,
+    output_image_bgra_bytes: *mut *mut u8,
+    output_image_bgra_bytes_length: *mut usize,
+    output_image_icc_bytes: *mut *mut u8,
+    output_image_icc_bytes_length: *mut usize,
+    output_error_message: *mut *mut u8,
+    output_error_message_length: *mut usize,
+) -> i32 {
     // SAFETY: guaranteed by the caller contract above.
-    let data = unsafe { std::slice::from_raw_parts(ptr, len) };
-    RESULT.with(|r| *r.borrow_mut() = None);
-    match decode_impl(data) {
-        Ok(image) => {
-            RESULT.with(|r| *r.borrow_mut() = Some(image));
-            LAST_ERROR.with(|e| e.borrow_mut().clear());
-            0
-        }
-        Err(message) => {
-            LAST_ERROR.with(|e| *e.borrow_mut() = message.into_bytes());
-            -1
+    unsafe {
+        *output_image_width = 0;
+        *output_image_height = 0;
+        *output_image_bgra_bytes = std::ptr::null_mut();
+        *output_image_bgra_bytes_length = 0;
+        *output_image_icc_bytes = std::ptr::null_mut();
+        *output_image_icc_bytes_length = 0;
+        *output_error_message = std::ptr::null_mut();
+        *output_error_message_length = 0;
+
+        let data = std::slice::from_raw_parts(input_bytes, input_bytes_length);
+        match decode_impl(data) {
+            Ok(image) => {
+                *output_image_width = image.width;
+                *output_image_height = image.height;
+                let (bgra_bytes, bgra_bytes_length) = leak_bytes(image.bgra);
+                *output_image_bgra_bytes = bgra_bytes;
+                *output_image_bgra_bytes_length = bgra_bytes_length;
+                if !image.icc.is_empty() {
+                    let (icc_bytes, icc_bytes_length) = leak_bytes(image.icc);
+                    *output_image_icc_bytes = icc_bytes;
+                    *output_image_icc_bytes_length = icc_bytes_length;
+                }
+                0
+            }
+            Err(message) => {
+                let (message_bytes, message_bytes_length) = leak_bytes(message.into_bytes());
+                *output_error_message = message_bytes;
+                *output_error_message_length = message_bytes_length;
+                -1
+            }
         }
     }
 }
 
-/// Width in pixels of the last successfully decoded image.
-#[no_mangle]
-pub extern "C" fn jxl_get_width() -> u32 {
-    RESULT.with(|r| r.borrow().as_ref().map_or(0, |i| i.width))
-}
-
-/// Height in pixels of the last successfully decoded image.
-#[no_mangle]
-pub extern "C" fn jxl_get_height() -> u32 {
-    RESULT.with(|r| r.borrow().as_ref().map_or(0, |i| i.height))
-}
-
-/// Pointer to the BGRA pixel bytes (`width * height * 4` bytes) of the last
-/// successfully decoded image. Valid until `jxl_free_result` or the next
-/// `jxl_decode` call.
-#[no_mangle]
-pub extern "C" fn jxl_get_pixels() -> *const u8 {
-    RESULT.with(|r| {
-        r.borrow()
-            .as_ref()
-            .map_or(std::ptr::null(), |i| i.bgra.as_ptr())
-    })
-}
-
-/// Pointer to the ICC profile bytes describing the color space of the pixel
-/// data, or null when the pixels are already sRGB (no conversion needed).
-/// Valid until `jxl_free_result` or the next `jxl_decode` call.
-#[no_mangle]
-pub extern "C" fn jxl_get_icc() -> *const u8 {
-    RESULT.with(|r| {
-        r.borrow().as_ref().map_or(std::ptr::null(), |i| {
-            if i.icc.is_empty() {
-                std::ptr::null()
-            } else {
-                i.icc.as_ptr()
-            }
-        })
-    })
-}
-
-/// Length in bytes of the ICC profile, 0 when the pixels are already sRGB.
-#[no_mangle]
-pub extern "C" fn jxl_get_icc_len() -> usize {
-    RESULT.with(|r| r.borrow().as_ref().map_or(0, |i| i.icc.len()))
-}
-
-/// Releases the memory held by the last decode result.
-#[no_mangle]
-pub extern "C" fn jxl_free_result() {
-    RESULT.with(|r| *r.borrow_mut() = None);
-}
-
-/// Pointer to the UTF-8 bytes of the last error message (not NUL-terminated).
-#[no_mangle]
-pub extern "C" fn jxl_get_error() -> *const u8 {
-    LAST_ERROR.with(|e| e.borrow().as_ptr())
-}
-
-/// Length in bytes of the last error message.
-#[no_mangle]
-pub extern "C" fn jxl_get_error_len() -> usize {
-    LAST_ERROR.with(|e| e.borrow().len())
+/// Hands the bytes over to the caller: returns their pointer and length and
+/// gives up ownership, so that [`jxl_free`] can release them later.
+fn leak_bytes(bytes: Vec<u8>) -> (*mut u8, usize) {
+    let mut bytes = bytes.into_boxed_slice();
+    let pointer = bytes.as_mut_ptr();
+    let length = bytes.len();
+    std::mem::forget(bytes);
+    (pointer, length)
 }
 
 fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {

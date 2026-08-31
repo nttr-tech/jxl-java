@@ -76,21 +76,31 @@ public final class DecodeBenchmark {
             long t2 = System.nanoTime();
 
             Memory memory = instance.memory();
-            int inputPtr = (int) call(instance, "jxl_alloc", data.length)[0];
-            memory.write(inputPtr, data);
-            long status = call(instance, "jxl_decode", inputPtr, data.length)[0];
-            call(instance, "jxl_free", inputPtr, data.length);
+            int outputSlots = (int) call(instance, "jxl_alloc", 8 * 4)[0];
+            int inputPointer = (int) call(instance, "jxl_alloc", data.length)[0];
+            memory.write(inputPointer, data);
+            long status = call(instance, "jxl_decode",
+                    inputPointer, data.length,
+                    outputSlots, outputSlots + 4,
+                    outputSlots + 8, outputSlots + 12,
+                    outputSlots + 16, outputSlots + 20,
+                    outputSlots + 24, outputSlots + 28)[0];
+            call(instance, "jxl_free", inputPointer, data.length);
             if (status != 0) {
                 throw new IllegalStateException("decode failed for " + path);
             }
             long t3 = System.nanoTime();
 
-            int width = (int) call(instance, "jxl_get_width")[0];
-            int height = (int) call(instance, "jxl_get_height")[0];
-            int pixelsPtr = (int) call(instance, "jxl_get_pixels")[0];
-            byte[] bgra = memory.readBytes(pixelsPtr, width * height * 4);
-            int iccLen = (int) call(instance, "jxl_get_icc_len")[0];
-            call(instance, "jxl_free_result");
+            int bgraPointer = memory.readInt(outputSlots + 8);
+            int bgraLength = memory.readInt(outputSlots + 12);
+            int iccPointer = memory.readInt(outputSlots + 16);
+            int iccLength = memory.readInt(outputSlots + 20);
+            byte[] bgra = memory.readBytes(bgraPointer, bgraLength);
+            call(instance, "jxl_free", bgraPointer, bgraLength);
+            if (iccPointer != 0) {
+                call(instance, "jxl_free", iccPointer, iccLength);
+            }
+            call(instance, "jxl_free", outputSlots, 8 * 4);
             long t4 = System.nanoTime();
 
             parseTotal += t1 - t0;
@@ -99,7 +109,7 @@ public final class DecodeBenchmark {
             pixelsTotal += t4 - t3;
             if (i == 0) {
                 System.out.println("    icc profile: "
-                        + (iccLen > 0 ? iccLen + " bytes (conversion needed)" : "none (sRGB)"));
+                        + (iccLength > 0 ? iccLength + " bytes (conversion needed)" : "none (sRGB)"));
             }
             if (bgra.length == 0) {
                 throw new IllegalStateException("empty pixels");
