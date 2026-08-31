@@ -69,11 +69,11 @@ byte[] (JXL file) --> wasm linear memory --> jxl-rs decoder (wasm)
     --> premultiplied BGRA bytes --> int[] ARGB --> BufferedImage (TYPE_INT_ARGB_PRE)
 ```
 
-- [`rust/src/lib.rs`](rust/src/lib.rs) exports `jxl_alloc`, `jxl_free`,
-  `jxl_decode`, `jxl_get_width`, `jxl_get_height`, `jxl_get_pixels`,
-  `jxl_get_icc`, `jxl_get_icc_len`, `jxl_get_error` and `jxl_free_result`.
-  Color images are decoded directly in BGR(A) order, so no separate
-  channel-reordering pass over the pixels is needed inside the wasm.
+- [`rust/src/lib.rs`](rust/src/lib.rs) exports `jxl_alloc`, `jxl_free` and
+  `jxl_decode`. Every image is decoded directly to interleaved BGRA (the
+  decoder replicates grayscale to three channels and fills in opaque alpha
+  where needed), so no conversion pass over the pixels is needed inside the
+  wasm.
 - `WasmJxlDecoder` drives those exports through Chicory; the parsed wasm
   module is cached per JVM, and each decode uses a fresh wasm instance
   (sub-millisecond to create), so decoding is thread-safe and isolated.
@@ -99,7 +99,8 @@ A staged benchmark is available via:
 
 When the decoder's output is not already sRGB (e.g. an embedded ICC
 profile, gamma or wide-gamut encodings), the wasm module attaches the ICC
-profile of the output color space (`jxl_get_icc`), and the Java side
+profile of the output color space to the `jxl_decode` result, and the Java
+side
 converts the pixels to sRGB with `java.awt.color.ICC_ColorSpace` +
 `ColorConvertOp`. XYB-encoded (lossy) images whose embedded ICC profile
 cannot be used as a decoder output space are decoded straight to sRGB by

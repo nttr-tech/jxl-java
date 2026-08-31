@@ -15,7 +15,6 @@ use jxl::api::{
     JxlColorEncoding, JxlColorProfile, JxlColorType, JxlDataFormat, JxlDecoder, JxlDecoderOptions,
     JxlOutputBuffer, JxlPixelFormat, ProcessingResult,
 };
-use jxl::headers::extra_channels::ExtraChannel;
 
 struct DecodedImage {
     width: u32,
@@ -162,29 +161,16 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         .and_then(|_| width.checked_mul(height)?.checked_mul(4))
         .ok_or("image dimensions overflow")?;
 
-    // Request 8-bit output, interleaving the alpha channel (if any) into the
-    // color buffer. Color images are requested directly in BGR(A) order so
-    // that the decoder writes the final layout and no extra full-image
-    // conversion pass (or second buffer) is needed for them below.
-    let current_format = decoder.current_pixel_format().clone();
-    let alpha_channel = info
-        .extra_channels
-        .iter()
-        .position(|c| c.ec_type == ExtraChannel::Alpha);
-    let base_color_type = match current_format.color_type {
-        JxlColorType::Rgb | JxlColorType::Rgba => JxlColorType::Bgr,
-        other => other,
-    };
-    let color_type = if alpha_channel.is_some() {
-        base_color_type.add_alpha().unwrap_or(base_color_type)
-    } else {
-        base_color_type
-    };
+    // Request 8-bit interleaved BGRA output directly: the decoder writes the
+    // final layout itself, so no conversion pass (or second buffer) is needed
+    // below. Grayscale images are replicated to B == G == R by the decoder,
+    // the alpha channel (if any) is interleaved as the fourth sample, and
+    // images without one get opaque alpha filled in.
     let pixel_format = JxlPixelFormat {
-        color_type,
+        color_type: JxlColorType::Bgra,
         color_data_format: Some(JxlDataFormat::U8 { bit_depth: 8 }),
         // Ignore all planar extra channels; alpha is interleaved instead.
-        extra_channel_format: vec![None; current_format.extra_channel_format.len()],
+        extra_channel_format: vec![None; info.extra_channels.len()],
     };
     decoder
         .set_pixel_format(pixel_format)
@@ -192,9 +178,8 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
 
     let icc = output_profile_icc(decoder.output_color_profile());
 
-    let samples_per_pixel = color_type.samples_per_pixel();
-    let bytes_per_row = width * samples_per_pixel;
-    let mut interleaved = vec![0u8; bytes_per_row * height];
+    let bytes_per_row = width * 4;
+    let mut bgra = vec![0u8; bytes_per_row * height];
 
     // Decode only the first (or only) frame of the image.
     let decoder_with_frame = match decoder
@@ -205,11 +190,7 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         ProcessingResult::NeedsMoreInput { .. } => return Err("truncated JPEG XL file".into()),
     };
 
-    let mut buffers = [JxlOutputBuffer::new(
-        &mut interleaved,
-        height,
-        bytes_per_row,
-    )];
+    let mut buffers = [JxlOutputBuffer::new(&mut bgra, height, bytes_per_row)];
     match decoder_with_frame
         .process(&mut input, &mut buffers, None)
         .map_err(|e| format!("failed to decode frame: {e}"))?
@@ -220,11 +201,6 @@ fn decode_impl(data: &[u8]) -> Result<DecodedImage, String> {
         }
     }
 
-    let bgra = if color_type == JxlColorType::Bgra {
-        interleaved
-    } else {
-        to_bgra(&interleaved, color_type, width * height)?
-    };
     Ok(DecodedImage {
         width: width as u32,
         height: height as u32,
@@ -246,65 +222,6 @@ fn output_profile_icc(profile: &JxlColorProfile) -> Vec<u8> {
     profile
         .try_as_icc()
         .map_or_else(Vec::new, |icc| icc.into_owned())
-}
-
-fn to_bgra(
-    interleaved: &[u8],
-    color_type: JxlColorType,
-    num_pixels: usize,
-) -> Result<Vec<u8>, String> {
-    let mut bgra = vec![0u8; num_pixels * 4];
-    match color_type {
-        JxlColorType::Grayscale => {
-            for (dst, g) in bgra.chunks_exact_mut(4).zip(interleaved.iter()) {
-                dst[0] = *g;
-                dst[1] = *g;
-                dst[2] = *g;
-                dst[3] = 0xFF;
-            }
-        }
-        JxlColorType::GrayscaleAlpha => {
-            for (dst, src) in bgra.chunks_exact_mut(4).zip(interleaved.chunks_exact(2)) {
-                dst[0] = src[0];
-                dst[1] = src[0];
-                dst[2] = src[0];
-                dst[3] = src[1];
-            }
-        }
-        JxlColorType::Rgb => {
-            for (dst, src) in bgra.chunks_exact_mut(4).zip(interleaved.chunks_exact(3)) {
-                dst[0] = src[2];
-                dst[1] = src[1];
-                dst[2] = src[0];
-                dst[3] = 0xFF;
-            }
-        }
-        JxlColorType::Rgba => {
-            for (dst, src) in bgra.chunks_exact_mut(4).zip(interleaved.chunks_exact(4)) {
-                dst[0] = src[2];
-                dst[1] = src[1];
-                dst[2] = src[0];
-                dst[3] = src[3];
-            }
-        }
-        JxlColorType::Bgr => {
-            for (dst, src) in bgra.chunks_exact_mut(4).zip(interleaved.chunks_exact(3)) {
-                dst[..3].copy_from_slice(src);
-                dst[3] = 0xFF;
-            }
-        }
-        JxlColorType::Bgra => bgra.copy_from_slice(interleaved),
-        JxlColorType::Cmyk => {
-            for (dst, src) in bgra.chunks_exact_mut(4).zip(interleaved.chunks_exact(4)) {
-                let (c, m, y, k) = (src[0] as u32, src[1] as u32, src[2] as u32, src[3] as u32);
-                dst[0] = ((255 - y) * (255 - k) / 255) as u8;
-                dst[1] = ((255 - m) * (255 - k) / 255) as u8;
-                dst[2] = ((255 - c) * (255 - k) / 255) as u8;
-                dst[3] = 0xFF;
-            }
-        }
-    }
-    Ok(bgra)
 }
 
 #[cfg(test)]
@@ -397,10 +314,18 @@ mod tests {
             image.bgra.len(),
             image.width as usize * image.height as usize * 4
         );
-        // Grayscale output must have B == G == R for every pixel.
+        // Grayscale output must be gray: the decoder replicates the gray
+        // sample to B, G and R, but dithers each channel with a different
+        // pattern offset when converting to 8 bits, so the channels of one
+        // pixel may differ by a single step.
         for pixel in image.bgra.chunks_exact(4) {
-            assert_eq!(pixel[0], pixel[1]);
-            assert_eq!(pixel[1], pixel[2]);
+            let minimum_value = *pixel[..3].iter().min().unwrap();
+            let maximum_value = *pixel[..3].iter().max().unwrap();
+            assert!(
+                maximum_value - minimum_value <= 1,
+                "pixel is not gray: {:?}",
+                &pixel[..3]
+            );
         }
     }
 

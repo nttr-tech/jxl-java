@@ -144,12 +144,19 @@ public class JxlImageReaderTest {
 
         assertNotNull(image);
         assertTrue(image.getWidth() > 0 && image.getHeight() > 0);
+        // The decoder replicates the gray sample to B, G and R, but dithers
+        // each channel with a different pattern offset when converting to
+        // 8 bits, so the channels of one pixel may differ by a single step
+        // (widened further here by un-premultiplication in getRGB()).
         for (int pixel : pixelsOf(image)) {
             int r = (pixel >> 16) & 0xFF;
             int g = (pixel >> 8) & 0xFF;
             int b = pixel & 0xFF;
-            assertEquals("grayscale pixel must have R == G", r, g);
-            assertEquals("grayscale pixel must have G == B", g, b);
+            int minimum = Math.min(r, Math.min(g, b));
+            int maximum = Math.max(r, Math.max(g, b));
+            assertTrue(
+                    "pixel must be gray but was " + r + "," + g + "," + b,
+                    maximum - minimum <= 2);
         }
     }
 
