@@ -32,7 +32,7 @@ public final class JxlImageViewer {
     }
 
     private static void selectAndShow() {
-        JFileChooser chooser = new JFileChooser();
+        JFileChooser chooser = new JFileChooser(new File("src/test/resources"));
         chooser.setDialogTitle("Select a JPEG XL file");
         chooser.setFileFilter(new FileNameExtensionFilter("JPEG XL images (*.jxl)", "jxl"));
         if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
