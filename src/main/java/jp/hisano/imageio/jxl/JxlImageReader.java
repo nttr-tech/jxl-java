@@ -119,6 +119,17 @@ public final class JxlImageReader extends ImageReader {
     }
 
     private static byte[] readAllBytes(ImageInputStream stream) throws IOException {
+        long streamLength = stream.length();
+        if (streamLength >= 0) {
+            long remainingByteCount = streamLength - stream.getStreamPosition();
+            if (remainingByteCount > Integer.MAX_VALUE) {
+                throw new IOException("Image too large: " + remainingByteCount + " bytes");
+            }
+            byte[] bytes = new byte[(int) remainingByteCount];
+            stream.readFully(bytes);
+            return bytes;
+        }
+
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[64 * 1024];
         while (true) {
