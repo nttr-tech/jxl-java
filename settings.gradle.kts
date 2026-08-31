@@ -1,1 +1,1 @@
-rootProject.name = "imageio-jxl"
+rootProject.name = "jxl-java"

@@ -81,7 +81,7 @@ tasks.register<JavaExec>("runBenchmark") {
     mainClass = "jp.hisano.imageio.jxl.benchmark.DecodeBenchmark"
 }
 
-// Self-contained jar (imageio-jxl-<version>-all.jar) with the Chicory
+// Self-contained jar (jxl-java-<version>-all.jar) with the Chicory
 // runtime shaded under jp.hisano.imageio.jxl.internal so it cannot clash with
 // another Chicory version on the application classpath.
 tasks.shadowJar {

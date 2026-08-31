@@ -1,4 +1,4 @@
-# imageio-jxl
+# jxl-java
 
 Java ImageIO plugin for reading JPEG XL images, powered by the
 [jxl-rs](https://github.com/libjxl/jxl-rs) decoder compiled to WebAssembly
@@ -44,9 +44,9 @@ A sample Swing viewer is included in the test sources
 
 This produces two jars under `build/libs/`:
 
-- `imageio-jxl-<version>.jar` — the plain library; requires
+- `jxl-java-<version>.jar` — the plain library; requires
   `com.dylibso.chicory:runtime` on the classpath.
-- `imageio-jxl-<version>-all.jar` — self-contained fat jar with the
+- `jxl-java-<version>-all.jar` — self-contained fat jar with the
   Chicory runtime shaded under `jp.hisano.imageio.jxl.internal.chicory`, so
   it never conflicts with another Chicory version in the application.
 
