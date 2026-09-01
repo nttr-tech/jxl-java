@@ -1,0 +1,2285 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chicory 徹底解説 — 純Java製 WebAssembly ランタイム(1.7.5対応)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper:#FAFBFD; --ink:#202634; --muted:#5B6472; --line:#DCE1EA;
+  --chicory:#3E63DD; --chicory-tint:#E9EEFF;
+  --guest:#654FF0; --guest-tint:#EFECFE; --guest-soft:#F5F3FE;
+  --host:#B45309; --host-tint:#FBF0DE; --host-soft:#FBF5EA;
+  --code-bg:#F2F5FA; --warn:#B33F2E;
+  --sans:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  --serif:"Shippori Mincho","Hiragino Mincho ProN","Noto Serif JP",serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; scroll-padding-top:1.5rem; }
+body { margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:15.5px; line-height:1.95; font-weight:400;
+  -webkit-font-smoothing:antialiased; }
+.wrap { display:grid; grid-template-columns:250px minmax(0,1fr); gap:0; max-width:1180px; margin:0 auto; }
+nav.toc { position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+  padding:2.4rem 1.4rem 2rem 1.6rem; border-right:1px solid var(--line); }
+nav.toc .brand { font-family:var(--serif); font-weight:700; font-size:1.05rem; letter-spacing:.02em; margin-bottom:.2rem; }
+nav.toc .brand-sub { font-size:.72rem; color:var(--muted); margin-bottom:1.4rem; }
+nav.toc a { display:flex; gap:.55em; align-items:baseline; padding:.34rem .5rem; margin:0 -.5rem;
+  border-radius:6px; color:var(--ink); text-decoration:none; font-size:.82rem; line-height:1.5; }
+nav.toc a:hover { background:var(--chicory-tint); }
+nav.toc .toc-num { font-family:var(--mono); font-size:.68rem; color:var(--chicory); white-space:nowrap; }
+main { padding:3rem 3.2rem 5rem; max-width:52rem; }
+header.hero { margin-bottom:3.2rem; padding-bottom:2rem; border-bottom:1px solid var(--line); }
+header.hero .kicker { font-family:var(--mono); font-size:.78rem; color:var(--chicory); margin-bottom:.9rem; }
+header.hero h1 { font-family:var(--serif); font-weight:700; font-size:2.15rem; line-height:1.5;
+  margin:0 0 1.1rem; letter-spacing:.01em; border:none; padding:0; }
+header.hero .lede { color:var(--muted); font-size:.92rem; line-height:2; max-width:40rem; }
+header.hero .plate { display:inline-flex; gap:1.2em; margin-top:1.2rem; padding:.55rem 1rem;
+  background:var(--chicory-tint); border-radius:8px; font-family:var(--mono); font-size:.76rem; color:#2B48A8; }
+h1 { font-family:var(--serif); font-weight:700; font-size:1.62rem; line-height:1.6; letter-spacing:.01em;
+  margin:4.2rem 0 1.4rem; padding-top:2.2rem; border-top:1px solid var(--line); }
+h2 { font-family:var(--serif); font-weight:600; font-size:1.22rem; line-height:1.7; margin:2.8rem 0 1rem; }
+h3 { font-size:1rem; font-weight:700; margin:2.2rem 0 .8rem; }
+p { margin:0 0 1.15em; }
+main > p, main li { max-width:44rem; }
+a { color:var(--chicory); text-decoration-color:#B9C7F5; text-underline-offset:3px; }
+strong { font-weight:700; }
+ul, ol { padding-left:1.5em; margin:0 0 1.2em; }
+li { margin-bottom:.35em; }
+blockquote { margin:1.6em 0; padding:.9em 1.3em; border-left:3px solid var(--chicory);
+  background:var(--chicory-tint); border-radius:0 8px 8px 0; color:#2E3A5C; }
+blockquote p { margin:0; }
+hr { border:none; height:0; margin:0; }
+code { font-family:var(--mono); font-size:.83em; background:#EDF1F8; padding:.12em .38em; border-radius:4px; }
+pre { background:var(--code-bg); border:1px solid var(--line); border-radius:10px;
+  padding:1.05rem 1.25rem; overflow-x:auto; line-height:1.7; margin:0 0 1.4em; }
+pre code { background:none; padding:0; font-size:.8rem; }
+.hl { background:var(--code-bg); }
+table { border-collapse:collapse; width:100%; margin:1.4em 0 1.8em; font-size:.84rem; line-height:1.7; }
+th { background:var(--chicory-tint); color:#2B3A6B; font-weight:700; text-align:left; }
+th, td { border:1px solid var(--line); padding:.55em .8em; vertical-align:top; }
+tbody tr:nth-child(even) { background:#F4F6FB; }
+.tablewrap { overflow-x:auto; }
+/* ---------- figures ---------- */
+.fig { margin:2.2em 0 2.6em; padding:1.4rem 1.2rem 1rem; background:#fff;
+  border:1px solid var(--line); border-radius:12px; }
+.fig svg { width:100%; height:auto; display:block; }
+figcaption { margin-top:.9rem; font-size:.78rem; color:var(--muted); line-height:1.8;
+  border-top:1px dashed var(--line); padding-top:.7rem; }
+.fig-no { font-family:var(--mono); color:var(--chicory); margin-right:.8em; }
+/* svg shared classes */
+svg text { font-family:var(--sans); }
+svg .t  { font-size:13px; fill:var(--ink); }
+svg .tb { font-weight:700; }
+svg .ts { font-size:11.2px; fill:var(--muted); }
+svg .tm { font-family:var(--mono); font-size:11px; fill:#3B4661; }
+svg .tsn { font-size:12px; fill:#fff; font-weight:700; }
+svg .mid { text-anchor:middle; }
+svg .end { text-anchor:end; }
+svg .warn { fill:var(--warn); }
+svg .ln { stroke:#7A8496; stroke-width:1.4; }
+svg .hazard { stroke:var(--warn); stroke-width:1.6; stroke-dasharray:5 4; }
+svg .panel { fill:#FFFFFF; stroke:var(--line); }
+svg .panel-accent { fill:#FDFEFF; stroke:var(--chicory); stroke-width:1.4; }
+svg .bx { fill:#FFFFFF; stroke:#AEB8CB; stroke-width:1.2; }
+svg .bx-warn { fill:#FDF0EE; stroke:#D98A7C; stroke-width:1.2; }
+svg .bx-dash { fill:#FBFCFE; stroke:#AEB8CB; stroke-width:1.2; stroke-dasharray:5 4; }
+svg .bx-native { fill:#EEF0F4; stroke:#98A2B5; stroke-width:1.2; }
+svg .bx-host { fill:var(--host-tint); stroke:#CB8A3E; stroke-width:1.3; }
+svg .bx-host-soft { fill:var(--host-soft); stroke:#E2C79B; stroke-width:1.2; }
+svg .bx-guest { fill:var(--guest-tint); stroke:#8B7BF0; stroke-width:1.3; }
+svg .bx-guest-soft { fill:var(--guest-soft); stroke:#C4BAF7; stroke-width:1.2; }
+svg .bx-accent { fill:var(--chicory-tint); stroke:#5C7CFA; stroke-width:1.3; }
+svg .chip { fill:#fff; stroke:#AEB8CB; stroke-width:1.1; }
+svg .q { fill:#fff; stroke:var(--chicory); stroke-width:1.3; }
+svg .gate { fill:#fff; stroke:var(--warn); stroke-width:1.6; }
+svg .gate-t { fill:var(--warn); font-weight:700; }
+svg .page { fill:var(--guest-tint); stroke:#8B7BF0; stroke-width:1.2; }
+svg .page-max { fill:#fff; stroke:#8B7BF0; stroke-width:1.2; stroke-dasharray:4 3; }
+svg .mem-cell { fill:var(--guest-tint); stroke:#8B7BF0; stroke-width:1.2; }
+svg .mem-free { fill:#fff; stroke:#C4BAF7; stroke-width:1; stroke-dasharray:3 3; }
+svg .stepno { fill:var(--chicory); }
+/* ---------- animations (CSS only; respects reduced motion) ---------- */
+.fig-anim .flow { stroke:var(--chicory); stroke-width:2; stroke-dasharray:7 6;
+  animation:flow 1.6s linear infinite; marker-end:url(#ar3); }
+@keyframes flow { to { stroke-dashoffset:-26; } }
+.fig-anim .pulse { fill:none; stroke:var(--warn); stroke-width:2; transform-origin:248px 200px;
+  animation:pulse 2.6s ease-out infinite; }
+.fig-anim .pulse.p2 { animation-delay:1.3s; }
+@keyframes pulse { 0% { transform:scale(.6); opacity:.85; } 80% { transform:scale(3.4); opacity:0; } 100% { opacity:0; } }
+.fig-anim .grow-g { animation:grow 4.5s ease-in-out infinite; }
+@keyframes grow { 0%,18% { opacity:0; } 38%,82% { opacity:1; } 100% { opacity:0; } }
+.fig-anim .st { opacity:.32; animation:seq 13s infinite; }
+.fig-anim .st2 { animation-delay:3.25s; }
+.fig-anim .st3 { animation-delay:6.5s; }
+.fig-anim .st4 { animation-delay:9.75s; }
+@keyframes seq { 0% { opacity:.32; } 4%,24% { opacity:1; } 30%,100% { opacity:.32; } }
+.fig-anim .mem-txt, .fig-anim .mem-ptr { animation:memshow 13s infinite; opacity:.25; }
+@keyframes memshow { 0%,26% { opacity:.25; } 30%,74% { opacity:1; } 80%,100% { opacity:.25; } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior:auto; }
+  .fig-anim * { animation:none !important; }
+  .fig-anim .st, .fig-anim .mem-txt, .fig-anim .mem-ptr, .fig-anim .grow-g { opacity:1; }
+}
+@media (max-width:1023px) {
+  .wrap { grid-template-columns:1fr; }
+  nav.toc { position:static; height:auto; border-right:none; border-bottom:1px solid var(--line);
+    padding:1.6rem 1.4rem; }
+  nav.toc .links { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:0 1rem; }
+  main { padding:2rem 1.3rem 4rem; }
+  header.hero h1 { font-size:1.7rem; }
+}
+pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.hl .hll { background-color: #ffffcc }
+.hl { background: #ffffff; }
+.hl .c { color: #177500 } /* Comment */
+.hl .err { color: #000 } /* Error */
+.hl .k { color: #A90D91 } /* Keyword */
+.hl .l { color: #1C01CE } /* Literal */
+.hl .n { color: #000 } /* Name */
+.hl .o { color: #000 } /* Operator */
+.hl .ch { color: #177500 } /* Comment.Hashbang */
+.hl .cm { color: #177500 } /* Comment.Multiline */
+.hl .cp { color: #633820 } /* Comment.Preproc */
+.hl .cpf { color: #177500 } /* Comment.PreprocFile */
+.hl .c1 { color: #177500 } /* Comment.Single */
+.hl .cs { color: #177500 } /* Comment.Special */
+.hl .kc { color: #A90D91 } /* Keyword.Constant */
+.hl .kd { color: #A90D91 } /* Keyword.Declaration */
+.hl .kn { color: #A90D91 } /* Keyword.Namespace */
+.hl .kp { color: #A90D91 } /* Keyword.Pseudo */
+.hl .kr { color: #A90D91 } /* Keyword.Reserved */
+.hl .kt { color: #A90D91 } /* Keyword.Type */
+.hl .ld { color: #1C01CE } /* Literal.Date */
+.hl .m { color: #1C01CE } /* Literal.Number */
+.hl .s { color: #C41A16 } /* Literal.String */
+.hl .na { color: #836C28 } /* Name.Attribute */
+.hl .nb { color: #A90D91 } /* Name.Builtin */
+.hl .nc { color: #3F6E75 } /* Name.Class */
+.hl .no { color: #000 } /* Name.Constant */
+.hl .nd { color: #000 } /* Name.Decorator */
+.hl .ni { color: #000 } /* Name.Entity */
+.hl .ne { color: #000 } /* Name.Exception */
+.hl .nf { color: #000 } /* Name.Function */
+.hl .nl { color: #000 } /* Name.Label */
+.hl .nn { color: #000 } /* Name.Namespace */
+.hl .nx { color: #000 } /* Name.Other */
+.hl .py { color: #000 } /* Name.Property */
+.hl .nt { color: #000 } /* Name.Tag */
+.hl .nv { color: #000 } /* Name.Variable */
+.hl .ow { color: #000 } /* Operator.Word */
+.hl .mb { color: #1C01CE } /* Literal.Number.Bin */
+.hl .mf { color: #1C01CE } /* Literal.Number.Float */
+.hl .mh { color: #1C01CE } /* Literal.Number.Hex */
+.hl .mi { color: #1C01CE } /* Literal.Number.Integer */
+.hl .mo { color: #1C01CE } /* Literal.Number.Oct */
+.hl .sa { color: #C41A16 } /* Literal.String.Affix */
+.hl .sb { color: #C41A16 } /* Literal.String.Backtick */
+.hl .sc { color: #2300CE } /* Literal.String.Char */
+.hl .dl { color: #C41A16 } /* Literal.String.Delimiter */
+.hl .sd { color: #C41A16 } /* Literal.String.Doc */
+.hl .s2 { color: #C41A16 } /* Literal.String.Double */
+.hl .se { color: #C41A16 } /* Literal.String.Escape */
+.hl .sh { color: #C41A16 } /* Literal.String.Heredoc */
+.hl .si { color: #C41A16 } /* Literal.String.Interpol */
+.hl .sx { color: #C41A16 } /* Literal.String.Other */
+.hl .sr { color: #C41A16 } /* Literal.String.Regex */
+.hl .s1 { color: #C41A16 } /* Literal.String.Single */
+.hl .ss { color: #C41A16 } /* Literal.String.Symbol */
+.hl .bp { color: #5B269A } /* Name.Builtin.Pseudo */
+.hl .fm { color: #000 } /* Name.Function.Magic */
+.hl .vc { color: #000 } /* Name.Variable.Class */
+.hl .vg { color: #000 } /* Name.Variable.Global */
+.hl .vi { color: #000 } /* Name.Variable.Instance */
+.hl .vm { color: #000 } /* Name.Variable.Magic */
+.hl .il { color: #1C01CE } /* Literal.Number.Integer.Long */
+.hl { background:var(--code-bg) !important; }
+.hl pre { background:var(--code-bg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="目次">
+  <div class="brand">Chicory 徹底解説</div>
+  <div class="brand-sub">純Java製 Wasm ランタイム / v1.7.5 対応</div>
+  <div class="links">
+<a href="#第1章-イントロダクション-なぜ-純Java製-Wasmランタイムか"><span class="toc-num">第1章</span><span class="toc-t">イントロダクション</span></a>
+<a href="#第2章-クイックスタート-15分で-動いた-まで"><span class="toc-num">第2章</span><span class="toc-t">クイックスタート</span></a>
+<a href="#第3章-コアコンセプト-Chicory-のメンタルモデル"><span class="toc-num">第3章</span><span class="toc-t">コアコンセプト</span></a>
+<a href="#第4章-基本機能ガイド"><span class="toc-num">第4章</span><span class="toc-t">基本機能ガイド</span></a>
+<a href="#第5章-実践レシピ-やりたいこと-から引く"><span class="toc-num">第5章</span><span class="toc-t">実践レシピ</span></a>
+<a href="#第6章-パフォーマンスと運用"><span class="toc-num">第6章</span><span class="toc-t">パフォーマンスと運用</span></a>
+<a href="#第7章-内部実装の解説-コードのどこを読めば何がわかるか"><span class="toc-num">第7章</span><span class="toc-t">内部実装の解説</span></a>
+<a href="#第8章-APIリファレンス-モジュール別"><span class="toc-num">第8章</span><span class="toc-t">APIリファレンス(モジュール別)</span></a>
+<a href="#第9章-トラブルシューティングとFAQ"><span class="toc-num">第9章</span><span class="toc-t">トラブルシューティングとFAQ</span></a>
+<a href="#第10章-バージョン管理と移行"><span class="toc-num">第10章</span><span class="toc-t">バージョン管理と移行</span></a>
+<a href="#第11章-コントリビューションとコミュニティ"><span class="toc-num">第11章</span><span class="toc-t">コントリビューションとコミュニティ</span></a>
+  </div>
+</nav>
+<main>
+<header class="hero">
+  <div class="kicker">com.dylibso.chicory : 1.7.5 — JVM native WebAssembly runtime</div>
+  <h1>Chicory 徹底解説<br>純Java製 WebAssembly ランタイムの基礎から内部実装まで</h1>
+  <p class="lede">ネイティブ依存も JNI もなしで、Rust・Go・C で書かれたコードを JVM のサンドボックスの中で動かす。本書は Chicory 1.7.5 のソースコード(タグ <code>1.7.5</code>、コミット <code>181f6175</code>、2026-03-24)と公式ドキュメントを直接検証しながら、採用判断・実装・運用・内部構造までを一冊で解説する。対象は Java 経験5年以上のシニアエンジニア。</p>
+  <div class="plate"><span>Java 11+</span><span>Android API 28+</span><span>Apache-2.0</span><span>zero native deps</span></div>
+</header>
+
+<blockquote>
+<p><strong>対象バージョン: Chicory 1.7.5</strong>(2026年3月24日リリース)
+本書のコード例・仕様の記述はすべて Chicory 1.7.5 のソースコード(リポジトリタグ <code>1.7.5</code>)および同梱の公式ドキュメントに基づいて検証しています。
+対象読者: Java 経験5年以上のシニアエンジニア。Java の言語仕様・JVM・Maven/Gradle の基礎知識は前提とし、WebAssembly の事前知識は前提としません。</p>
+</blockquote>
+<hr />
+<h2 id="本書の読み方">本書の読み方</h2>
+<p>本書は「導入 → 概念理解 → 実践 → 応用 → リファレンス → 深掘り」という習熟フローに沿って構成しています。</p>
+<table>
+<thead>
+<tr>
+<th>目的</th>
+<th>読むべき章</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>採用可否を判断したい</td>
+<td>第1章 → 第6章 → 第10章</td>
+</tr>
+<tr>
+<td>とにかく動かしたい</td>
+<td>第2章 → 第4章</td>
+</tr>
+<tr>
+<td>設計を理解して使いこなしたい</td>
+<td>第3章 → 第4章 → 第5章 → 第6章</td>
+</tr>
+<tr>
+<td>ハマったとき</td>
+<td>第9章(→ 必要に応じて第7章)</td>
+</tr>
+<tr>
+<td>コントリビュートしたい</td>
+<td>第7章 → 第11章</td>
+</tr>
+</tbody>
+</table>
+<p>各章は極力独立して読めるように書いていますが、第3章の用語(<code>WasmModule</code> / <code>Instance</code> / <code>Machine</code> / ホスト関数 など)は以降のすべての章で前提とします。</p>
+<hr />
+<h1 id="第1章-イントロダクション-なぜ-純Java製-Wasmランタイムか">第1章 イントロダクション — なぜ「純Java製」Wasmランタイムか</h1>
+<h2 id="1-1-Chicory-とは何か">1.1 Chicory とは何か</h2>
+<p>Chicory(チコリー)は、<strong>JVM ネイティブの WebAssembly(Wasm)ランタイム</strong>です。Dylibso 社が開発を主導し、Red Hat のエンジニアらも主要コントリビュータとして参加する Apache-2.0 ライセンスの OSS で、2023年9月に開発が始まり、2024年12月に 1.0.0 が、2026年3月に本書の対象である 1.7.5 がリリースされました。</p>
+<p>最大の特徴は次の一文に尽きます。</p>
+<blockquote>
+<p><strong>ネイティブ依存も JNI も一切なしで、Wasm プログラムを実行できる。JVM が動く場所ならどこでも Wasm が動く。</strong></p>
+</blockquote>
+<p>Chicory はコードベースの9割以上が Java で書かれた「ただの jar」です。<code>pom.xml</code> に依存を1行足すだけで、Rust・Go・C・Zig などで書かれ Wasm にコンパイルされたコードを、JVM のサンドボックスの中で安全に実行できます。</p>
+<h3 id="そもそも-WebAssembly-を-JVM-で動かす意味">そもそも WebAssembly を JVM で動かす意味</h3>
+<p>WebAssembly はブラウザ由来の技術ですが、その本質は「<strong>ポータブルで、サンドボックス化された、低レベルのバイナリ命令フォーマット</strong>」です。サーバサイドの文脈では次の価値を持ちます。</p>
+<ol>
+<li><strong>ポリグロット</strong>: Rust や C で書かれた既存資産(SQLite、jq、正規表現エンジン等)を、言語の壁を越えて呼び出せる。</li>
+<li><strong>サンドボックス</strong>: Wasm モジュールは線形メモリの外を読み書きできず、明示的に許可した機能(インポート)以外は一切実行できない。サードパーティ製プラグインや、ユーザーが投稿したコードの実行基盤に向く。</li>
+<li><strong>決定性とポータビリティ</strong>: 同じ <code>.wasm</code> バイナリが OS・CPU アーキテクチャを問わず同じ意味論で動く。</li>
+</ol>
+<h2 id="1-2-Chicory-が解決する課題-ネイティブランタイム埋め込みの-2つの摩擦">1.2 Chicory が解決する課題 — ネイティブランタイム埋め込みの「2つの摩擦」</h2>
+<p>Wasm ランタイム自体は成熟した選択肢が複数あります(V8、Wasmtime、Wasmer、WasmEdge、wazero など)。しかしこれらは C/C++/Rust/Go で書かれており、Java アプリケーションに組み込むには JNI/FFI バインディング経由になります。Chicory の公式ドキュメントは、この方式の摩擦を2点挙げています。</p>
+<p><strong>摩擦1: 配布(Distribution)</strong>
+Java ライブラリ(jar/war)を配布する際、ネイティブランタイムを同梱するなら「OS × CPUアーキテクチャ」の行列すべてに対応したネイティブバイナリを含める必要があります。Linux x86_64 / aarch64、macOS、Windows、Alpine(musl)……と組み合わせは膨らみ、「jar を置けば動く」という Java 本来の配布の単純さが失われます。</p>
+<p><strong>摩擦2: 実行時(Runtime)</strong>
+FFI 経由でネイティブコードを呼んだ瞬間、JVM の安全性と可観測性の外に出ます。ネイティブ側のクラッシュはプロセスごと JVM を巻き込み、ヒープダンプ・プロファイラ・デバッガといった JVM のツール群も届きません。純 JVM ランタイムであれば、メモリ安全性の保証も監視ツールもそのまま機能し続けます。</p>
+<figure class="fig ">
+
+<svg viewBox="0 0 720 268" role="img" aria-label="JNIバインディング方式とChicory方式の比較図">
+<defs>
+<marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<!-- left panel -->
+<g>
+<rect x="14" y="10" width="330" height="246" rx="10" class="panel"/>
+<text x="34" y="38" class="t tb">JNI バインディング方式</text>
+<rect x="60" y="54" width="238" height="34" rx="6" class="bx-host"/>
+<text x="179" y="76" class="t mid">Java アプリ</text>
+<line x1="179" y1="88" x2="179" y2="112" class="ln" marker-end="url(#ar1)"/>
+<line x="0" x1="34" y1="102" x2="324" y2="102" class="hazard"/>
+<text x="188" y="106" class="ts">JNI / FFI = 安全性の境界</text>
+<rect x="60" y="116" width="238" height="52" rx="6" class="bx-native"/>
+<text x="179" y="138" class="t mid">ネイティブ Wasm ランタイム</text>
+<text x="179" y="156" class="ts mid">OS × CPUアーキテクチャごとにバイナリ</text>
+<line x1="179" y1="168" x2="179" y2="192" class="ln" marker-end="url(#ar1)"/>
+<rect x="60" y="196" width="238" height="34" rx="6" class="bx-guest"/>
+<text x="179" y="218" class="t mid">Wasm モジュール</text>
+<text x="179" y="248" class="ts mid">クラッシュ・ツール断絶のリスクは JVM の外側に</text>
+</g>
+<!-- right panel -->
+<g>
+<rect x="376" y="10" width="330" height="246" rx="10" class="panel-accent"/>
+<text x="396" y="38" class="t tb">Chicory 方式</text>
+<text x="676" y="38" class="ts end">すべて JVM ヒープ内で完結</text>
+<rect x="422" y="54" width="238" height="34" rx="6" class="bx-host"/>
+<text x="541" y="76" class="t mid">Java アプリ</text>
+<line x1="541" y1="88" x2="541" y2="112" class="ln" marker-end="url(#ar1)"/>
+<text x="550" y="106" class="ts">ただのメソッド呼び出し</text>
+<rect x="422" y="116" width="238" height="52" rx="6" class="bx-accent"/>
+<text x="541" y="138" class="t mid">Chicory(jar)</text>
+<text x="541" y="156" class="ts mid">純Java・ネイティブ依存ゼロ</text>
+<line x1="541" y1="168" x2="541" y2="192" class="ln" marker-end="url(#ar1)"/>
+<rect x="422" y="196" width="238" height="34" rx="6" class="bx-guest"/>
+<text x="541" y="218" class="t mid">Wasm モジュール</text>
+<text x="541" y="248" class="ts mid">メモリ安全性・プロファイラ・デバッガが全部届く</text>
+</g>
+</svg>
+<figcaption><span class="fig-no">図1</span>ネイティブランタイム埋め込み(JNI)方式と Chicory 方式の対比。Chicory ではすべてが JVM の安全性・可観測性の内側で完結する。</figcaption>
+</figure>
+
+<h2 id="1-3-設計思想-速さ-より-安全と単純さ">1.3 設計思想 — 「速さ」より「安全と単純さ」</h2>
+<p>Chicory は README で目標(Goals)と<strong>非目標(Non-Goals)</strong>を明文化しています。採用判断に直結するので原文の趣旨をそのまま押さえてください。</p>
+<p><strong>目標:</strong>
+- 可能な限り安全であること(<strong>性能を犠牲にしてでも安全性と単純さを優先する</strong>、と明言)
+- ネイティブコードなしで、制約の強い環境を含むあらゆる JVM 環境で Wasm を簡単に動かせること
+- Wasm コア仕様の完全サポート
+- Java(および他のホスト言語)との統合が容易で慣用的であること</p>
+<p><strong>非目標:</strong>
+- スタンドアロンのランタイムになること
+- <strong>最速のランタイムになること</strong>
+- すべての JVM プロジェクトにとっての正解になること</p>
+<p>つまり Chicory は「Wasmtime より速い」ことを目指していません。ネイティブランタイム + JNI の方がピーク性能で勝るケースは普通にあります。Chicory を選ぶ理由は、性能ではなく<strong>配布の単純さ・JVM 内で完結する安全性・運用のしやすさ</strong>です。この期待値を最初に共有しておくことが、導入プロジェクトの成否を分けます(性能特性の詳細は第6章)。</p>
+<h2 id="1-4-類似手段との比較">1.4 類似手段との比較</h2>
+<table>
+<thead>
+<tr>
+<th>手段</th>
+<th>実装言語</th>
+<th>配布形態</th>
+<th>JNI/FFI</th>
+<th>特徴</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Chicory</strong></td>
+<td>Java</td>
+<td>jar のみ</td>
+<td>不要</td>
+<td>純JVM。インタプリタ+バイトコードコンパイラの2エンジン</td>
+</tr>
+<tr>
+<td>wasmtime-java 等のバインディング</td>
+<td>Rust/C++</td>
+<td>jar + ネイティブlib</td>
+<td>必要</td>
+<td>ピーク性能は高いが配布行列と FFI 境界の問題</td>
+</tr>
+<tr>
+<td>GraalWasm</td>
+<td>Java (Truffle)</td>
+<td>jar 群</td>
+<td>不要</td>
+<td>Graal/Truffle スタック上で高速。ただし Truffle 依存が付く</td>
+</tr>
+<tr>
+<td>Extism (Java SDK)</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>ランタイムというより「プラグインシステム」の枠組み。Chicory 上で動く純Java版 SDK(Extism Chicory SDK)がある</td>
+</tr>
+<tr>
+<td>asmble / KWasm</td>
+<td>Java/Kotlin</td>
+<td>jar</td>
+<td>不要</td>
+<td>先行研究(Prior Art)。現在はメンテが停滞</td>
+</tr>
+</tbody>
+</table>
+<p>設計面で Chicory が「遠い親戚」と公言しているのが Go エコシステムの <strong>wazero</strong> です。wazero は「Go 製アプリに zero dependency で Wasm を」というコンセプトで成功しており、Chicory はその Java 版という位置づけで始まりました(FOSDEM 2025 では両プロジェクトの比較講演もあります)。</p>
+<h2 id="1-5-採用判断のための評価材料">1.5 採用判断のための評価材料</h2>
+<p><strong>ライセンスとガバナンス</strong>: Apache-2.0。GitHub の <code>dylibso/chicory</code> で開発され、Dylibso と Red Hat のエンジニアが中心。毎週火曜に公開の Office Hours(16:00–16:30 UTC)があり、Zulip チャットで質問できます。</p>
+<p><strong>動作要件</strong>(1.7.5 時点、ソースの <code>pom.xml</code> および android-tests で確認):</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>要件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Java バージョン</td>
+<td><strong>Java 11 以上</strong>(<code>maven.compiler.release=11</code> でビルド)</td>
+</tr>
+<tr>
+<td>Android</td>
+<td><strong>API 28 以上</strong>(公式の device-tests が minSdk 28 で検証)</td>
+</tr>
+<tr>
+<td>SIMD 利用時のみ</td>
+<td>Java 21 以上(Vector API / JEP 448 依存)+ インタプリタモード限定</td>
+</tr>
+<tr>
+<td>ネイティブ依存</td>
+<td>なし(ランタイムコンパイラ利用時のみ ASM ライブラリが必要。これも純Java)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>仕様準拠</strong>: Wasm コア仕様の公式テストスイート(.wast)から JUnit テストを自動生成して CI で回しており、インタプリタ・コンパイラ・WASI それぞれのテスト結果バッジを README で公開しています。2025〜2026年のロードマップで SIMD、Tail Call、例外処理(Exception Handling)、スレッド、拡張定数式、<strong>WasmGC、Multi-Memory</strong> までチェック済みになっており、モダンな Wasm プロポーザルへの追従は言語非依存ランタイムとしてかなり手厚い部類です。2026年の残タスクは「Performance」です。</p>
+<p><strong>採用実績</strong>(README「Who uses Chicory?」より):</p>
+<ul>
+<li><strong>JRuby</strong> — Ruby の公式パーサ Prism(C実装)を Wasm 化して同梱</li>
+<li><strong>Debezium</strong> — Go で書いた Single Message Transformation のプラグイン実行</li>
+<li><strong>Trino</strong> — Python UDF の実行基盤</li>
+<li><strong>Bazel</strong> — repo rules 内での Wasm 実行</li>
+<li><strong>Apache Camel</strong> — Wasm コンポーネント</li>
+<li><strong>Quarkus</strong> — quarkus-chicory ほか複数の Quarkiverse 拡張</li>
+<li><strong>sqlite4j / pglite4j / jq4j / protobuf4j / quickjs4j</strong> — SQLite・PostgreSQL・jq・protoc・QuickJS を「純Java 化」して配布するライブラリ群(quickjs4j は Microcks や Apicurio Registry が利用)</li>
+<li><strong>OPA (Open Policy Agent)</strong> の Java SDK、OpenFeature の Go Feature Flag プロバイダ、Spotify Confidence resolver、WildFly AI Feature Pack など</li>
+</ul>
+<p>「C資産の純Java化」(sqlite4j 型)と「ユーザー提供コードのサンドボックス実行」(Debezium/Trino 型)という2大ユースケースが実績として確立している、というのが採用判断上の重要情報です。</p>
+<hr />
+<h1 id="第2章-クイックスタート-15分で-動いた-まで">第2章 クイックスタート — 15分で「動いた」まで</h1>
+<p>この章のゴールは、コピペだけで Wasm モジュールを Java から呼び出すことです。Wasm 側のツールチェーンを一切入れなくても試せる経路(2.2)を先に用意しています。</p>
+<h2 id="2-1-依存の追加と環境要件">2.1 依存の追加と環境要件</h2>
+<p>必要なのは <strong>Java 11 以上</strong>と Maven または Gradle だけです。</p>
+<p><strong>Maven:</strong></p>
+<div class="hl"><pre><span></span><code><span class="nt">&lt;dependency&gt;</span>
+<span class="w">  </span><span class="nt">&lt;groupId&gt;</span>com.dylibso.chicory<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>runtime<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;version&gt;</span>1.7.5<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div>
+
+<p><strong>Gradle:</strong></p>
+<div class="hl"><pre><span></span><code><span class="n">implementation</span><span class="w"> </span><span class="s1">&#39;com.dylibso.chicory:runtime:1.7.5&#39;</span>
+</code></pre></div>
+
+<p>複数の Chicory アーティファクト(<code>wasi</code>、<code>compiler</code> など。第4章参照)を使う場合は、BOM でバージョンを揃えるのが定石です。</p>
+<div class="hl"><pre><span></span><code><span class="nt">&lt;dependencyManagement&gt;</span>
+<span class="w">  </span><span class="nt">&lt;dependencies&gt;</span>
+<span class="w">    </span><span class="nt">&lt;dependency&gt;</span>
+<span class="w">      </span><span class="nt">&lt;groupId&gt;</span>com.dylibso.chicory<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">      </span><span class="nt">&lt;artifactId&gt;</span>bom<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">      </span><span class="nt">&lt;version&gt;</span>1.7.5<span class="nt">&lt;/version&gt;</span>
+<span class="w">      </span><span class="nt">&lt;type&gt;</span>pom<span class="nt">&lt;/type&gt;</span>
+<span class="w">      </span><span class="nt">&lt;scope&gt;</span>import<span class="nt">&lt;/scope&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/dependency&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/dependencies&gt;</span>
+<span class="nt">&lt;/dependencyManagement&gt;</span>
+</code></pre></div>
+
+<h2 id="2-2-既存の-wasm-を動かす-最小構成">2.2 既存の .wasm を動かす(最小構成)</h2>
+<p>まず、Chicory のテストコーパスにある「階乗を計算する Wasm モジュール」をダウンロードします。自分で Wasm をビルドする必要はありません。</p>
+<div class="hl"><pre><span></span><code>curl<span class="w"> </span>https://raw.githubusercontent.com/dylibso/chicory/main/wasm-corpus/src/main/resources/compiled/iterfact.wat.wasm<span class="w"> </span>&gt;<span class="w"> </span>factorial.wasm
+</code></pre></div>
+
+<p>これを実行する Java コードは以下です。</p>
+<figure class="fig fig-anim">
+
+<svg viewBox="0 0 760 332" role="img" aria-label="Chicoryの実行パイプライン">
+<defs>
+<marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<!-- main flow row (y=120) -->
+<path class="flow" d="M118 140 H176" fill="none"/>
+<path class="flow" d="M330 140 H392" fill="none"/>
+<path class="flow" d="M540 140 H600" fill="none"/>
+<rect x="20" y="112" width="98" height="56" rx="8" class="bx"/>
+<text x="69" y="136" class="t tb mid">.wasm</text>
+<text x="69" y="153" class="ts mid">バイナリ</text>
+<text x="147" y="128" class="tm mid">Parser</text>
+<text x="147" y="141" class="tm mid">.parse()</text>
+<rect x="180" y="104" width="150" height="72" rx="8" class="bx-accent"/>
+<text x="255" y="130" class="t tb mid">WasmModule</text>
+<text x="255" y="148" class="ts mid">不変・スレッド共有可</text>
+<text x="255" y="164" class="ts mid">= 不活性なコード</text>
+<text x="366" y="128" class="tm mid">builder()</text>
+<text x="366" y="141" class="tm mid">.build()</text>
+<rect x="396" y="104" width="144" height="72" rx="8" class="bx-guest"/>
+<text x="468" y="130" class="t tb mid">Instance</text>
+<text x="468" y="148" class="ts mid">実行状態: メモリ・</text>
+<text x="468" y="163" class="ts mid">テーブル・グローバル</text>
+<rect x="604" y="104" width="136" height="72" rx="8" class="bx"/>
+<text x="672" y="128" class="t tb mid">long[]</text>
+<text x="672" y="146" class="ts mid">export("f")</text>
+<text x="672" y="161" class="ts mid">.apply(args…)</text>
+<!-- ImportValues injection -->
+<rect x="360" y="16" width="216" height="46" rx="8" class="bx-host"/>
+<text x="468" y="35" class="t tb mid">ImportValues</text>
+<text x="468" y="52" class="ts mid">ホスト関数 / WASI を注入</text>
+<path d="M440 62 V100" class="ln" fill="none" marker-end="url(#ar3)"/>
+<text x="448" y="86" class="tm">withImportValues</text>
+<!-- Machine slot -->
+<rect x="300" y="216" width="336" height="96" rx="8" class="bx-dash"/>
+<text x="468" y="238" class="t tb mid">Machine — long[] call(funcId, args)</text>
+<rect x="316" y="252" width="94" height="44" rx="6" class="chip"/>
+<text x="363" y="270" class="ts mid">Interpreter</text><text x="363" y="285" class="ts mid">Machine(既定)</text>
+<rect x="420" y="252" width="94" height="44" rx="6" class="chip"/>
+<text x="467" y="270" class="ts mid">コンパイラ</text><text x="467" y="285" class="ts mid">生成コード</text>
+<rect x="524" y="252" width="98" height="44" rx="6" class="chip"/>
+<text x="573" y="270" class="ts mid">SimdInterpreter</text><text x="573" y="285" class="ts mid">Machine(21+)</text>
+<path d="M496 216 V180" class="ln" fill="none" marker-end="url(#ar3)"/>
+<text x="504" y="202" class="tm">withMachineFactory</text>
+<!-- legend -->
+<g>
+<rect x="20" y="232" width="12" height="12" rx="3" class="bx-host"/><text x="38" y="242" class="ts">ホスト(Java)側</text>
+<rect x="20" y="254" width="12" height="12" rx="3" class="bx-guest"/><text x="38" y="264" class="ts">ゲスト(Wasm)側</text>
+<rect x="20" y="276" width="12" height="12" rx="3" class="bx-accent"/><text x="38" y="286" class="ts">Chicory の中核オブジェクト</text>
+</g>
+</svg>
+<figcaption><span class="fig-no">図3</span>パースからの呼び出しまでの流れ。点線の流れがデータの向き。ImportValues と MachineFactory がビルダーへの2大注入点。</figcaption>
+</figure>
+
+<p>3行で本質を言えば「<strong>パースして(Parser)、インスタンス化して(Instance)、エクスポート関数を呼ぶ(ExportFunction)</strong>」です。<code>module</code> は「不活性なコード」、<code>instance</code> は「そのコードの実行時表現=実行準備の整った仮想マシン」と公式ドキュメントは説明しています。</p>
+<h3 id="戻り値が-long-である理由">戻り値が <code>long[]</code> である理由</h3>
+<p><code>ExportFunction</code> は次のような関数型インターフェースです(runtime モジュールのソースより)。</p>
+<div class="hl"><pre><span></span><code><span class="nd">@FunctionalInterface</span>
+<span class="kd">public</span><span class="w"> </span><span class="kd">interface</span> <span class="nc">ExportFunction</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">long</span><span class="o">[]</span><span class="w"> </span><span class="nf">apply</span><span class="p">(</span><span class="kt">long</span><span class="p">...</span><span class="w"> </span><span class="n">args</span><span class="p">)</span><span class="w"> </span><span class="kd">throws</span><span class="w"> </span><span class="n">ChicoryException</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<ul>
+<li><strong>配列</strong>なのは、Wasm の関数が多値(複数の戻り値)を返せるためです。単一値の関数なら <code>[0]</code> を取ります。</li>
+<li><strong>long</strong> なのは、Wasm の基本4型(i32 / i64 / f32 / f64)をすべて 64bit 整数のビットパターンに詰めて受け渡す設計だからです。浮動小数点数は <code>Value</code> クラスのユーティリティで変換します。</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasm.types.Value</span><span class="p">;</span>
+
+<span class="kt">long</span><span class="w"> </span><span class="n">raw</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Value</span><span class="p">.</span><span class="na">doubleToLong</span><span class="p">(</span><span class="mf">3.14</span><span class="p">);</span><span class="w">   </span><span class="c1">// Java double -&gt; Wasm f64 のビット表現</span>
+<span class="kt">double</span><span class="w"> </span><span class="n">d</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">Value</span><span class="p">.</span><span class="na">longToDouble</span><span class="p">(</span><span class="n">raw</span><span class="p">);</span><span class="w">   </span><span class="c1">// 逆変換</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">f</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">Value</span><span class="p">.</span><span class="na">floatToLong</span><span class="p">(</span><span class="mf">1.5f</span><span class="p">);</span><span class="w">   </span><span class="c1">// f32 も同様</span>
+<span class="kt">float</span><span class="w">  </span><span class="n">fv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Value</span><span class="p">.</span><span class="na">longToFloat</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>Wasm 型</th>
+<th>Java 側の受け渡し</th>
+<th>変換ヘルパー</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>i32</td>
+<td><code>long</code>(下位32bit)</td>
+<td><code>(int)</code> キャスト</td>
+</tr>
+<tr>
+<td>i64</td>
+<td><code>long</code> そのまま</td>
+<td>不要</td>
+</tr>
+<tr>
+<td>f32</td>
+<td><code>long</code>(ビットパターン)</td>
+<td><code>Value.floatToLong</code> / <code>longToFloat</code></td>
+</tr>
+<tr>
+<td>f64</td>
+<td><code>long</code>(ビットパターン)</td>
+<td><code>Value.doubleToLong</code> / <code>longToDouble</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-3-自分で-Wasm-モジュールを作って動かす">2.3 自分で Wasm モジュールを作って動かす</h2>
+<p>次に「自作コードを Wasm 化して Java から呼ぶ」経路です。ここでは Rust の例を示します(TinyGo や Zig でも同様のことができます。言語別の詳細は第5章)。</p>
+<div class="hl"><pre><span></span><code><span class="c1"># Rust ツールチェーンに wasm ターゲットを追加</span>
+rustup<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>wasm32-unknown-unknown
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="c1">// src/lib.rs</span>
+<span class="cp">#[no_mangle]</span>
+<span class="k">pub</span><span class="w"> </span><span class="k">extern</span><span class="w"> </span><span class="s">&quot;C&quot;</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="kt">i32</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="kt">i32</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kt">i32</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">y</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="c1"># Cargo.toml(抜粋)</span>
+<span class="k">[lib]</span>
+<span class="n">crate-type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;cdylib&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>cargo<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--target<span class="w"> </span>wasm32-unknown-unknown
+<span class="c1"># =&gt; target/wasm32-unknown-unknown/release/&lt;name&gt;.wasm</span>
+</code></pre></div>
+
+<p>Java 側は 2.2 と完全に同じパターンです。</p>
+<div class="hl"><pre><span></span><code><span class="kd">var</span><span class="w"> </span><span class="n">module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;target/wasm32-unknown-unknown/release/adder.wasm&quot;</span><span class="p">));</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">).</span><span class="nc">build</span><span class="p">();</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;add&quot;</span><span class="p">).</span><span class="na">apply</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="c1">// =&gt; 5</span>
+</code></pre></div>
+
+<p>もうひとつ、<strong>Java コードの中で WAT(Wasm テキスト形式)から直接ビルドする</strong>方法もあります。Chicory 本体には WAT パーサはまだありませんが、wabt の <code>wat2wasm</code> を Wasm 化した <code>wabt</code> モジュール(それ自身が Chicory 上で動く、という自己ホスト的な構成)が公式提供されています。ユニットテストで重宝します。</p>
+<div class="hl"><pre><span></span><code><span class="nt">&lt;dependency&gt;</span>
+<span class="w">  </span><span class="nt">&lt;groupId&gt;</span>com.dylibso.chicory<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>wabt<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;version&gt;</span>1.7.5<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wabt.Wat2Wasm</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">wasm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Wat2Wasm</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;(module (func (export \&quot;add\&quot;) (param $x i32) (param $y i32) (result i32)&quot;</span>
+<span class="w">    </span><span class="o">+</span><span class="w"> </span><span class="s">&quot; (i32.add (local.get $x) (local.get $y))))&quot;</span><span class="p">);</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="n">wasm</span><span class="p">)).</span><span class="na">build</span><span class="p">();</span>
+<span class="kt">long</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;add&quot;</span><span class="p">).</span><span class="na">apply</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">41</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="c1">// =&gt; 42</span>
+</code></pre></div>
+
+<h2 id="2-4-初期のハマりどころ">2.4 初期のハマりどころ</h2>
+<p><strong>(1) <code>UnlinkableException</code> / インポート未解決</strong>
+モジュールが関数やメモリを import している場合、インスタンス化時にすべて解決されている必要があります。素の <code>Instance.builder(module).build()</code> で失敗したら、そのモジュールはホスト関数(第4章)か WASI(4.5節)を要求しています。<code>wasm-objdump</code>(wabt)や後述の wasm-tools でモジュールの import セクションを確認してください。</p>
+<p><strong>(2) エクスポート名が見つからない</strong>
+<code>instance.export("名前")</code> の名前は Wasm 側のエクスポート名と完全一致が必要です。Rust なら <code>#[no_mangle]</code> を忘れるとマングリングされた名前になります。</p>
+<p><strong>(3) 型の食い違い</strong>
+<code>apply(5)</code> は i32 として解釈されるとは限りません。シグネチャは Wasm 側の宣言が正であり、Java 側はすべて <code>long</code> で渡すだけです。f32/f64 を「数値のまま」渡すと壊れます(必ず <code>Value.floatToLong</code> 等でビット変換)。</p>
+<p><strong>(4) WASI モジュールをそのまま動かそうとする</strong>
+<code>wasm32-wasip1</code> ターゲットでビルドしたバイナリや、C を Emscripten/wasi-sdk でビルドしたバイナリは、<code>wasi_snapshot_preview1</code> 名前空間のインポートを要求します。この場合は 4.5 節の <code>WasiPreview1</code> を接続してください。</p>
+<hr />
+<h1 id="第3章-コアコンセプト-Chicory-のメンタルモデル">第3章 コアコンセプト — Chicory のメンタルモデル</h1>
+<p>この章が本書全体の土台です。以降の章はすべてここで定義する用語と全体像を前提に書きます。</p>
+<h2 id="3-1-全体アーキテクチャ">3.1 全体アーキテクチャ</h2>
+<p>Chicory は少数のモジュール(Maven アーティファクト)に責務を分割しています。リポジトリ同梱の開発者向けドキュメント(AGENT.md)に依存グラフが明記されているので、それを図にします。</p>
+<figure class="fig ">
+
+<svg viewBox="0 0 720 300" role="img" aria-label="Chicoryのモジュール依存グラフ">
+<defs>
+<marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<rect x="30" y="18" width="180" height="40" rx="7" class="bx-accent"/>
+<text x="120" y="35" class="t tb mid">wasm</text>
+<text x="120" y="50" class="ts mid">パーサ / バリデータ / 型</text>
+<line x1="120" y1="58" x2="120" y2="88" class="ln" marker-end="url(#ar2)"/>
+<rect x="30" y="92" width="180" height="40" rx="7" class="bx-accent"/>
+<text x="120" y="109" class="t tb mid">runtime</text>
+<text x="120" y="124" class="ts mid">インタプリタ / Instance / Store</text>
+<g class="ln-g">
+<path d="M210 112 H268 V44 H316" class="ln" fill="none" marker-end="url(#ar2)"/>
+<path d="M210 112 H268 V112 H316" class="ln" fill="none" marker-end="url(#ar2)"/>
+<path d="M210 112 H268 V180 H316" class="ln" fill="none" marker-end="url(#ar2)"/>
+<path d="M210 112 H268 V248 H316" class="ln" fill="none" marker-end="url(#ar2)"/>
+</g>
+<rect x="320" y="24" width="176" height="40" rx="7" class="bx"/>
+<text x="408" y="41" class="t tb mid">wasi</text>
+<text x="408" y="56" class="ts mid">WASI Preview 1</text>
+<line x1="496" y1="44" x2="546" y2="44" class="ln" marker-end="url(#ar2)"/>
+<rect x="550" y="24" width="150" height="40" rx="7" class="bx"/>
+<text x="625" y="41" class="t tb mid">wasm-tools</text>
+<text x="625" y="56" class="ts mid">wat2wasm 等</text>
+<rect x="320" y="92" width="176" height="40" rx="7" class="bx"/>
+<text x="408" y="109" class="t tb mid">compiler</text>
+<text x="408" y="124" class="ts mid">Wasm → JVM バイトコード</text>
+<rect x="320" y="160" width="176" height="40" rx="7" class="bx"/>
+<text x="408" y="177" class="t tb mid">simd</text>
+<text x="408" y="192" class="ts mid">SIMD 命令(Machine 差替)</text>
+<rect x="320" y="228" width="176" height="40" rx="7" class="bx"/>
+<text x="408" y="245" class="t tb mid">log</text>
+<text x="408" y="260" class="ts mid">ロギング抽象</text>
+<text x="30" y="170" class="ts">その他:</text>
+<text x="30" y="190" class="tm">annotations(-processor)</text>
+<text x="30" y="208" class="tm">build-time-compiler</text>
+<text x="30" y="226" class="tm">compiler-maven-plugin</text>
+<text x="30" y="244" class="tm">dircache-experimental</text>
+<text x="30" y="262" class="tm">wabt / cli / bom</text>
+</svg>
+<figcaption><span class="fig-no">図2</span>Chicory の主要 Maven モジュールと依存の向き(AGENT.md の依存グラフに基づく)。wasm → runtime を幹に、機能が枝として生える一方向の層構造。</figcaption>
+</figure>
+
+<p>処理の流れを1枚にすると次のようになります。</p>
+<div class="hl"><pre><span></span><code> .wasm バイナリ
+      │  Parser.parse()          ←─ wasm モジュール
+      ▼
+ WasmModule(不変・スレッド共有可)
+      │  Instance.builder(module)
+      │    .withImportValues(...)   ← ホスト関数 / WASI を注入
+      │    .withMachineFactory(...) ← 実行エンジンを選択
+      │    .build()
+      ▼
+ Instance(実行状態: メモリ・テーブル・グローバル)
+      │  instance.export(&quot;f&quot;)
+      ▼
+ ExportFunction.apply(args...) ──► Machine.call() ──► 結果 long[]
+                                     ▲
+                     InterpreterMachine(既定)/ コンパイラ生成コード / SimdInterpreterMachine
+</code></pre></div>
+
+<h2 id="3-2-中心となる抽象概念と責務">3.2 中心となる抽象概念と責務</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>クラス</th>
+<th>責務</th>
+<th>ミュータビリティ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>モジュール</td>
+<td><code>WasmModule</code></td>
+<td>パース済みバイナリの構造(型・関数・インポート/エクスポート宣言等)</td>
+<td>不変</td>
+</tr>
+<tr>
+<td>パーサ</td>
+<td><code>Parser</code></td>
+<td><code>.wasm</code> → <code>WasmModule</code>。既定で検証(validation)も実施</td>
+<td>—</td>
+</tr>
+<tr>
+<td>インスタンス</td>
+<td><code>Instance</code></td>
+<td>モジュールの実行時表現。メモリ・テーブル・グローバル・GC参照を保持</td>
+<td>可変(実行状態)</td>
+</tr>
+<tr>
+<td>エクスポート関数</td>
+<td><code>ExportFunction</code></td>
+<td><code>long[] apply(long...)</code> の関数ハンドル</td>
+<td>—</td>
+</tr>
+<tr>
+<td>インポート値</td>
+<td><code>ImportValues</code></td>
+<td>インスタンス化時に注入する関数・グローバル・メモリ・テーブルの束</td>
+<td>ビルダーで構築</td>
+</tr>
+<tr>
+<td>ホスト関数</td>
+<td><code>HostFunction</code></td>
+<td>Java で実装した、ゲストから呼べる関数</td>
+<td>—</td>
+</tr>
+<tr>
+<td>ストア</td>
+<td><code>Store</code></td>
+<td>複数インスタンスの名前付き管理とリンク</td>
+<td>可変・<strong>非スレッドセーフ</strong></td>
+</tr>
+<tr>
+<td>メモリ</td>
+<td><code>Memory</code>(IF)/ <code>ByteBufferMemory</code> / <code>ByteArrayMemory</code></td>
+<td>Wasm 線形メモリの JVM 上の表現</td>
+<td>可変</td>
+</tr>
+<tr>
+<td>マシン</td>
+<td><code>Machine</code></td>
+<td>実行エンジンの抽象。<code>long[] call(int funcId, long[] args)</code> の1メソッド</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>設計上の勘所は2つあります。</p>
+<p><strong>「コード」と「状態」の分離</strong> — <code>WasmModule</code> は不変で、複数の <code>Instance</code> から共有できます。同じモジュールを大量にインスタンス化するプラグインシステム(リクエストごとに使い捨てインスタンス、など)では、パースを1回で済ませてインスタンス化だけ繰り返すのが基本形です。</p>
+<p><strong><code>Machine</code> という1メソッドの抽象</strong> — 実行エンジン全体を <code>long[] call(int funcId, long[] args)</code> という関数型インターフェース1個に押し込めています。これが「エンジン差し替え」の接点で、インタプリタ・ランタイムコンパイラ・ビルド時コンパイラ・SIMD 対応インタプリタがすべてこの口で交換されます(3.3節)。</p>
+<h2 id="3-3-2つ-正確には3つ-の実行エンジン">3.3 2つ(正確には3つ)の実行エンジン</h2>
+<p>Chicory は当初インタプリタ専用でしたが、2024年に「インタプリタとコンパイラを別エンジンに分離する」設計変更を行い、以後は <code>Machine</code> の差し替えで実行方式を選べます。公式ドキュメントの整理をそのまま示します。</p>
+<table>
+<thead>
+<tr>
+<th>モード</th>
+<th>性能</th>
+<th>動的モジュールロード</th>
+<th>追加要件</th>
+<th>出力形態</th>
+<th>適する場面</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>インタプリタ</strong>(既定)</td>
+<td>遅い</td>
+<td>○</td>
+<td>なし</td>
+<td>なし(完全解釈実行)</td>
+<td>既定。最大のポータビリティ。開発時、動的ロードが必要な環境</td>
+</tr>
+<tr>
+<td><strong>ランタイムコンパイル</strong></td>
+<td>速い</td>
+<td>○</td>
+<td>ASM 依存+リフレクション</td>
+<td>メモリ上の Java バイトコード</td>
+<td>性能が欲しく、動的ロードも必要な場合</td>
+</tr>
+<tr>
+<td><strong>ビルド時コンパイル</strong></td>
+<td>速い</td>
+<td>×(静的のみ)</td>
+<td>Maven/Gradle プラグイン</td>
+<td><code>.class</code> ファイル</td>
+<td>本番・静的モジュール。native-image 併用時の本命</td>
+</tr>
+</tbody>
+</table>
+<p>重要な事実として、<strong>ランタイムコンパイラもビルド時コンパイラも「インタプリタと同じ spec テストを 100% パスするドロップイン代替」</strong>であることが公式に謳われています。つまり意味論は同じで、変わるのは速度と制約だけです。使い分けの実務は第4章(4.6/4.7)と第6章で扱います。</p>
+<h2 id="3-4-メモリモデル-Wasm-線形メモリの-JVM-上の表現">3.4 メモリモデル — Wasm 線形メモリの JVM 上の表現</h2>
+<p>Wasm のメモリは「<strong>線形メモリ</strong>」と呼ばれる、0番地から始まる1本の連続したバイト列です。ページ単位(1ページ = 64KiB)で確保・拡張されます。Chicory の <code>Memory</code> インターフェース(runtime モジュール)には次の定数が定義されています。</p>
+<div class="hl"><pre><span></span><code><span class="kd">public</span><span class="w"> </span><span class="kd">interface</span> <span class="nc">Memory</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="cm">/** WebAssembly のページサイズは 64KiB = 65,536 バイト */</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">PAGE_SIZE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">65536</span><span class="p">;</span>
+
+<span class="w">    </span><span class="cm">/**</span>
+<span class="cm">     * ランタイムが許容する最大ページ数。</span>
+<span class="cm">     * Wasm 仕様は 2^16 ページまで許すが、JVM の配列サイズ上限に基づき制限する。</span>
+<span class="cm">     * この値は Integer.MAX_VALUE / PAGE_SIZE。</span>
+<span class="cm">     */</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">RUNTIME_MAX_PAGES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32767</span><span class="p">;</span>
+<span class="w">    </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>ここに Chicory の設計判断が凝縮されています。</p>
+<ul>
+<li>Wasm 仕様上の上限は 65,536 ページ(= 4GiB)ですが、Chicory は線形メモリを <strong>JVM の配列/ByteBuffer で表現する</strong>ため、<code>Integer.MAX_VALUE</code> バイトの壁から <strong>32,767 ページ(約 2GiB)が上限</strong>になります。巨大メモリを要求するモジュールを扱う場合はこの制約を最初に確認してください。</li>
+<li>実装は2種類あり、既定は <code>ByteBufferMemory</code> です(<code>Instance</code> のビルド処理で <code>memoryFactory</code> 未指定時に <code>ByteBufferMemory::new</code> が使われることをソースで確認できます)。1.1.0 以降は配列ベースで最適化された <code>ByteArrayMemory</code> もあり、公式は「最近の OpenJDK では <code>ByteArrayMemory</code> を推奨、Android などそれ以外の VM では <code>ByteBufferMemory</code> を維持」としています(4.9節・第6章)。</li>
+</ul>
+<figure class="fig fig-anim">
+
+<svg viewBox="0 0 720 176" role="img" aria-label="線形メモリのページ構造">
+<text x="20" y="30" class="t tb">線形メモリ(1本の連続したバイト列・アドレス0起点)</text>
+<g>
+<rect x="20"  y="46" width="92" height="52" rx="6" class="page"/>
+<rect x="118" y="46" width="92" height="52" rx="6" class="page"/>
+<rect x="216" y="46" width="92" height="52" rx="6" class="page"/>
+<rect x="314" y="46" width="92" height="52" rx="6" class="page"/>
+<text x="66"  y="68" class="ts mid">page 0</text><text x="66"  y="85" class="tm mid">64KiB</text>
+<text x="164" y="68" class="ts mid">page 1</text><text x="164" y="85" class="tm mid">64KiB</text>
+<text x="262" y="68" class="ts mid">page 2</text><text x="262" y="85" class="tm mid">64KiB</text>
+<text x="360" y="68" class="ts mid">page 3</text><text x="360" y="85" class="tm mid">64KiB</text>
+</g>
+<g class="grow-g">
+<rect x="412" y="46" width="92" height="52" rx="6" class="page-new"/>
+<text x="458" y="68" class="ts mid">page 4</text>
+<text x="458" y="85" class="tm mid">64KiB</text>
+<text x="458" y="118" class="tm mid grow-label">memory.grow(1)</text>
+</g>
+<text x="530" y="78" class="t">…</text>
+<rect x="556" y="46" width="112" height="52" rx="6" class="page-max"/>
+<text x="612" y="68" class="ts mid">page 32,766</text>
+<text x="612" y="85" class="tm mid">上限</text>
+<text x="20" y="140" class="ts">RUNTIME_MAX_PAGES = 32,767(= Integer.MAX_VALUE ÷ 65,536)→ 最大 約2GiB</text>
+<text x="20" y="160" class="ts">Wasm 仕様上の 65,536 ページ(4GiB)より狭い。JVM 配列/ByteBuffer で表現するための設計判断</text>
+</svg>
+<figcaption><span class="fig-no">図5</span>線形メモリは 64KiB ページの連続列。memory.grow でページ単位に成長し(点滅部分)、Chicory では JVM 配列上限に由来する 32,767 ページ ≒ 2GiB が天井になる。</figcaption>
+</figure>
+
+<p>ゲストとの複合データのやり取りは「ポインタ(= 線形メモリ上のオフセット)+長さ」を整数で渡し、ホスト側が <code>Memory</code> の <code>readString</code> / <code>writeString</code> / <code>readBytes</code> / <code>write</code> / <code>readI32</code> / <code>writeI32</code> 等で読み書きする、というのが基本プロトコルです(第4章 4.3)。</p>
+<h2 id="3-5-サンドボックス境界-どこまでが-安全-か">3.5 サンドボックス境界 — どこまでが「安全」か</h2>
+<p>Chicory を使う上で最も重要なメンタルモデルがこれです。</p>
+<figure class="fig fig-anim">
+
+<svg viewBox="0 0 720 330" role="img" aria-label="サンドボックス境界の図">
+<defs>
+<marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<rect x="14" y="14" width="692" height="302" rx="12" class="bx-host-soft"/>
+<text x="34" y="42" class="t tb">JVM プロセス — ホスト(あなたの Java コード)</text>
+<text x="34" y="62" class="ts">ファイル・ネットワーク・スレッド…なんでもできる</text>
+<rect x="248" y="84" width="430" height="150" rx="10" class="bx-guest"/>
+<text x="268" y="112" class="t tb">サンドボックス(ゲスト)= Wasm モジュール</text>
+<text x="268" y="138" class="ts">・自分の線形メモリしか読み書きできない</text>
+<text x="268" y="158" class="ts">・I/O 手段を持たない(純粋な計算のみ)</text>
+<text x="268" y="178" class="ts">・外界への唯一の窓 = インポート</text>
+<!-- gate on boundary -->
+<g class="pulse-g">
+<circle cx="248" cy="200" r="8" class="pulse p1"/>
+<circle cx="248" cy="200" r="8" class="pulse p2"/>
+</g>
+<rect x="188" y="184" width="120" height="34" rx="17" class="gate"/>
+<text x="248" y="205" class="ts mid gate-t">インポート解決</text>
+<path d="M186 201 H108" class="ln" fill="none" marker-end="url(#ar4)"/>
+<rect x="34" y="182" width="72" height="38" rx="7" class="bx-host"/>
+<text x="70" y="199" class="t mid">ホスト</text><text x="70" y="214" class="t mid">関数</text>
+<path d="M70 222 V262" class="ln" fill="none" marker-end="url(#ar4)"/>
+<text x="34" y="284" class="ts">JVM の全機能へ(無制限)</text>
+<text x="322" y="266" class="t tb warn">↑ ここが唯一の、そして重大な境界</text>
+<text x="322" y="286" class="ts">ホスト関数 = 自作のシステムコール。信頼できないゲストには最小権限で設計する</text>
+</svg>
+<figcaption><span class="fig-no">図4</span>サンドボックス境界。ゲストの外界への唯一の窓がインポートであり、それを満たすホスト関数がセキュリティ境界になる(波紋はその一点を示す)。</figcaption>
+</figure>
+
+<p>公式ドキュメント(Host Functions)の要点はこうです。</p>
+<ul>
+<li>インポートを持たない Wasm モジュールは「<strong>純粋な計算</strong>」であり、いかなる I/O も、他モジュールとの相互作用もできません。</li>
+<li>インポートを <strong>ホスト関数</strong>(Java で書いた関数)で満たすと、ゲストはそれを呼べるようになります。ホスト関数は<strong>無制限</strong>で、周囲の環境と任意のやり方で相互作用できます。つまり<strong>サンドボックスからの実質的な脱出口</strong>です。</li>
+<li>したがって、<strong>ホスト関数はセキュリティ境界</strong>であり、信頼できない Wasm コードを動かすなら慎重に実装する必要があります。感覚としては OS のシステムコールを自分で定義しているのに近い、というのが公式の説明です。</li>
+</ul>
+<p>WASI(4.5節)も実体は「あらかじめ用意されたホスト関数の詰め合わせ」にすぎず、しかもすべて<strong>仮想化</strong>されています(ゲストはホストの資源に直接触れず、WASI 層が仲介し、その表面積は設定で絞れます)。</p>
+<p>なお「CPU を使い潰す無限ループ」はメモリ安全とは別の問題です。Chicory の実行はキャリアスレッドの<strong>割り込み(interrupt)を尊重</strong>するので、<code>ExecutorService</code> + タイムアウトで絶対時間の上限を課すのが定石です(第6章 6.5)。</p>
+<h2 id="3-6-用語集">3.6 用語集</h2>
+<table>
+<thead>
+<tr>
+<th>用語</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ゲスト (guest)</td>
+<td>実行される Wasm モジュール(インスタンス)側</td>
+</tr>
+<tr>
+<td>ホスト (host)</td>
+<td>Chicory を組み込んだ Java アプリケーション側</td>
+</tr>
+<tr>
+<td>線形メモリ</td>
+<td>ゲストが読み書きできる唯一のメモリ空間。64KiB ページ単位</td>
+</tr>
+<tr>
+<td>インポート / エクスポート</td>
+<td>モジュールが要求する外部機能 / モジュールが外に公開する機能。関数・メモリ・テーブル・グローバルの4種</td>
+</tr>
+<tr>
+<td>ホスト関数</td>
+<td>インポートを満たすために Java で実装する関数</td>
+</tr>
+<tr>
+<td>トラップ (trap)</td>
+<td>Wasm 実行時の致命的エラー(ゼロ除算、範囲外メモリアクセス等)。Chicory では <code>TrapException</code> になる</td>
+</tr>
+<tr>
+<td>WASI</td>
+<td>WebAssembly System Interface。stdio・ファイル・時計・乱数などの標準ホスト関数仕様。Chicory は Preview 1 をサポート</td>
+</tr>
+<tr>
+<td>WAT</td>
+<td>Wasm のテキスト表現(S式)。<code>.wat</code> ⇔ <code>.wasm</code> は wat2wasm 等で相互変換</td>
+</tr>
+<tr>
+<td>Machine</td>
+<td>Chicory の実行エンジン抽象。インタプリタ/コンパイラを差し替える接点</td>
+</tr>
+<tr>
+<td>validation</td>
+<td>インスタンス化前の型検査。Wasm 仕様のアルゴリズムに基づく。既定で有効</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="第4章-基本機能ガイド">第4章 基本機能ガイド</h1>
+<p>各節は「目的 → 基本コード → 動作の仕組み → 注意点」の順で統一しています。API 詳細は第8章、エラー時は第9章を参照してください。</p>
+<h2 id="4-1-モジュールのロードとパース">4.1 モジュールのロードとパース</h2>
+<p><strong>目的</strong>: <code>.wasm</code> バイナリを <code>WasmModule</code> に変換する。</p>
+<p><strong>基本コード</strong>: <code>Parser</code> は入力ソース別に static メソッドを持ちます。</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasm.Parser</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasm.WasmModule</span><span class="p">;</span>
+
+<span class="n">WasmModule</span><span class="w"> </span><span class="n">m1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;mod.wasm&quot;</span><span class="p">));</span>
+<span class="n">WasmModule</span><span class="w"> </span><span class="n">m2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="n">Path</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="s">&quot;mod.wasm&quot;</span><span class="p">));</span>
+<span class="n">WasmModule</span><span class="w"> </span><span class="n">m3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="n">Files</span><span class="p">.</span><span class="na">readAllBytes</span><span class="p">(</span><span class="n">Path</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="s">&quot;mod.wasm&quot;</span><span class="p">)));</span><span class="w"> </span><span class="c1">// byte[]</span>
+<span class="n">WasmModule</span><span class="w"> </span><span class="n">m4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="n">getClass</span><span class="p">().</span><span class="na">getResourceAsStream</span><span class="p">(</span><span class="s">&quot;/mod.wasm&quot;</span><span class="p">));</span><span class="w"> </span><span class="c1">// InputStream</span>
+</code></pre></div>
+
+<p><strong>仕組み</strong>: パースと同時に、Wasm 仕様の検証アルゴリズムに基づく validation(<code>Validator</code>)が走ります。ここで型の不整合などは <code>InvalidException</code>、バイナリ形式の破損は <code>MalformedException</code> として弾かれます(第9章)。</p>
+<p><strong>注意点</strong>: <code>Parser.builder().withValidation(false)</code> で検証を切ることもできますが、信頼済みかつ検証済みのモジュールを大量に再ロードする場合の最適化手段であり、通常は推奨されません。特に SIMD は「validation 必須。無効化すると誤った結果を生む可能性が高い」と公式が明記しています。</p>
+<h2 id="4-2-インスタンス化と関数呼び出し">4.2 インスタンス化と関数呼び出し</h2>
+<p><strong>目的</strong>: <code>WasmModule</code> から実行状態を作り、関数を呼ぶ。</p>
+<p><strong>基本コード</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="n">Instance</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+        <span class="err">.</span><span class="nc">withImportValues</span><span class="p">(</span><span class="n">imports</span><span class="p">)</span><span class="w">      </span><span class="c1">// インポートがある場合</span>
+<span class="w">        </span><span class="p">.</span><span class="na">withMachineFactory</span><span class="p">(</span><span class="n">factory</span><span class="p">)</span><span class="w">    </span><span class="c1">// エンジンを変える場合(既定はインタプリタ)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+
+<span class="n">ExportFunction</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;myFunc&quot;</span><span class="p">);</span>
+<span class="kt">long</span><span class="o">[]</span><span class="w"> </span><span class="n">results</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="na">apply</span><span class="p">(</span><span class="n">arg1</span><span class="p">,</span><span class="w"> </span><span class="n">arg2</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>Instance.Builder</code> の主なオプション(1.7.5 のソースで確認できるもの):</p>
+<table>
+<thead>
+<tr>
+<th>メソッド</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>withImportValues(ImportValues)</code></td>
+<td>ホスト関数等の注入(4.4)</td>
+</tr>
+<tr>
+<td><code>withMachineFactory(Function&lt;Instance,Machine&gt;)</code></td>
+<td>実行エンジン選択(4.6/4.7/4.9)</td>
+</tr>
+<tr>
+<td><code>withMemoryLimits(MemoryLimits)</code></td>
+<td>メモリ上限の強制(6.3)</td>
+</tr>
+<tr>
+<td><code>withMemoryFactory(Function&lt;MemoryLimits,Memory&gt;)</code></td>
+<td>メモリ実装の差し替え(6.3)</td>
+</tr>
+<tr>
+<td><code>withTableFactory</code> / <code>withGlobalFactory</code></td>
+<td>テーブル/グローバル生成のカスタマイズ</td>
+</tr>
+<tr>
+<td><code>withInitialize(boolean)</code> / <code>withStart(boolean)</code></td>
+<td>初期化・start 関数実行の制御</td>
+</tr>
+<tr>
+<td><code>withUnsafeExecutionListener(ExecutionListener)</code></td>
+<td>命令単位のフック(6.5。名前どおり unsafe)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>仕組み</strong>: <code>build()</code> 時にインポート解決 → メモリ/テーブル/グローバルの生成 → データ/エレメントセグメントの初期化 → (あれば)start 関数の実行、という Wasm 仕様どおりのインスタンス化が行われます。</p>
+<p><strong>注意点</strong>: WASI の「コマンド型」モジュールは<strong>インスタンス化した瞬間に <code>_start</code> が走る</strong>、すなわちインスタンス化=プログラム実行です(4.5)。この挙動を制御したいときに <code>withStart(false)</code> 等が効きます。</p>
+<h2 id="4-3-メモリ経由の複合データ受け渡し">4.3 メモリ経由の複合データ受け渡し</h2>
+<p><strong>目的</strong>: 文字列やバイト列など、i32/i64/f32/f64 に収まらないデータをゲストとやり取りする。</p>
+<p>Wasm が理解するのは基本的な整数・浮動小数点数だけなので、複雑な型の受け渡しは「低レベルのポインタ渡し」になります。公式の count_vowels(Rust 製、文字列中の母音を数える)の例をそのまま示します。</p>
+<div class="hl"><pre><span></span><code><span class="n">Instance</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;./count_vowels.wasm&quot;</span><span class="p">))).</span><span class="na">build</span><span class="p">();</span>
+<span class="n">ExportFunction</span><span class="w"> </span><span class="n">countVowels</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;count_vowels&quot;</span><span class="p">);</span>
+
+<span class="c1">// モジュールが公開しているアロケータを使う</span>
+<span class="n">ExportFunction</span><span class="w"> </span><span class="n">alloc</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;alloc&quot;</span><span class="p">);</span>
+<span class="n">ExportFunction</span><span class="w"> </span><span class="n">dealloc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;dealloc&quot;</span><span class="p">);</span>
+
+<span class="n">Memory</span><span class="w"> </span><span class="n">memory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">memory</span><span class="p">();</span>
+<span class="n">String</span><span class="w"> </span><span class="n">message</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Hello, World!&quot;</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">message</span><span class="p">.</span><span class="na">getBytes</span><span class="p">().</span><span class="na">length</span><span class="p">;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="n">ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="n">alloc</span><span class="p">.</span><span class="na">apply</span><span class="p">(</span><span class="n">len</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span><span class="w">   </span><span class="c1">// ゲスト内メモリを確保 → ポインタが返る</span>
+<span class="n">memory</span><span class="p">.</span><span class="na">writeString</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">message</span><span class="p">);</span><span class="w">      </span><span class="c1">// ホストから線形メモリに書き込む</span>
+
+<span class="kt">long</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">countVowels</span><span class="p">.</span><span class="na">apply</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">len</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="c1">// ポインタ+長さで呼ぶ</span>
+<span class="n">dealloc</span><span class="p">.</span><span class="na">apply</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">len</span><span class="p">);</span><span class="w">                      </span><span class="c1">// ゲスト側の割り当てを解放</span>
+<span class="c1">// result == 3  (&quot;Hello, World!&quot; の母音は e,o,o の3つ)</span>
+</code></pre></div>
+
+<figure class="fig fig-anim">
+
+<svg viewBox="0 0 720 336" role="img" aria-label="alloc→write→call→deallocの手順">
+<defs>
+<marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<rect x="20" y="20" width="200" height="296" rx="10" class="bx-host-soft"/>
+<text x="120" y="46" class="t tb mid">ホスト(Java)</text>
+<rect x="480" y="20" width="220" height="296" rx="10" class="bx-guest-soft"/>
+<text x="590" y="46" class="t tb mid">ゲストの線形メモリ</text>
+<rect x="520" y="120" width="140" height="46" rx="4" class="mem-cell"/>
+<text x="590" y="140" class="tm mid mem-txt">"Hello, World!"</text>
+<text x="590" y="157" class="tm mid mem-ptr">ptr … ptr+len</text>
+<rect x="520" y="66" width="140" height="40" rx="4" class="mem-free"/>
+<rect x="520" y="180" width="140" height="40" rx="4" class="mem-free"/>
+<g class="st st1">
+<circle cx="248" cy="86" r="12" class="stepno"/><text x="248" y="90" class="tsn mid">1</text>
+<path d="M266 86 H472" class="ln" fill="none" marker-end="url(#ar6)"/>
+<text x="368" y="76" class="tm mid">alloc(len)</text>
+<text x="368" y="104" class="ts mid">← 空き領域のポインタ ptr が返る</text>
+</g>
+<g class="st st2">
+<circle cx="248" cy="150" r="12" class="stepno"/><text x="248" y="154" class="tsn mid">2</text>
+<path d="M266 150 H472" class="ln" fill="none" marker-end="url(#ar6)"/>
+<text x="368" y="140" class="tm mid">memory.writeString(ptr, msg)</text>
+<text x="368" y="168" class="ts mid">ホストが線形メモリへ直接書き込む</text>
+</g>
+<g class="st st3">
+<circle cx="248" cy="214" r="12" class="stepno"/><text x="248" y="218" class="tsn mid">3</text>
+<path d="M266 214 H472" class="ln" fill="none" marker-end="url(#ar6)"/>
+<text x="368" y="204" class="tm mid">count_vowels(ptr, len)</text>
+<text x="368" y="232" class="ts mid">← 結果 3(整数だけが境界を越える)</text>
+</g>
+<g class="st st4">
+<circle cx="248" cy="278" r="12" class="stepno"/><text x="248" y="282" class="tsn mid">4</text>
+<path d="M266 278 H472" class="ln" fill="none" marker-end="url(#ar6)"/>
+<text x="368" y="268" class="tm mid">dealloc(ptr, len)</text>
+<text x="368" y="296" class="ts mid">ゲスト側の割り当てを返却(リーク防止)</text>
+</g>
+</svg>
+<figcaption><span class="fig-no">図6</span>文字列受け渡しの4ステップ。ホストはゲストのアロケータ(alloc/dealloc)を借りて線形メモリに書き、ポインタ+長さの整数だけを関数に渡す。番号が順に点灯する。</figcaption>
+</figure>
+
+<p><strong>仕組み</strong>: <code>instance.memory()</code> が返す <code>Memory</code> はゲストの線形メモリそのものです。<code>writeString</code>/<code>readString</code> は UTF-8 が既定で、<code>Charset</code> 指定のオーバーロードもあります。</p>
+<p><strong>注意点</strong>:</p>
+<ul>
+<li><strong>メモリの所有者はゲスト</strong>です。どの領域が空いているかを知っているのはゲスト側のアロケータだけなので、この例のように <code>alloc</code>/<code>dealloc</code> をエクスポートしてもらうのが安全な作法です(勝手なオフセットに書くと、ゲストのヒープを破壊します)。</li>
+<li>確保した領域の解放漏れは、そのインスタンスが生きている限りゲスト内リークになります。短命インスタンス(使い捨て)戦略ならリークごと破棄できます。</li>
+</ul>
+<h2 id="4-4-ホスト関数-ゲストに-Java-の機能を与える">4.4 ホスト関数 — ゲストに Java の機能を与える</h2>
+<p><strong>目的</strong>: モジュールのインポートを Java 実装で満たす。</p>
+<p><strong>基本コード</strong>: <code>console.log</code> というインポートを要求するモジュールに、標準出力へのログ関数を与える公式例です。</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.runtime.HostFunction</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.runtime.Instance</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasm.types.FunctionType</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasm.types.ValType</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">func</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">HostFunction</span><span class="p">(</span>
+<span class="w">    </span><span class="s">&quot;console&quot;</span><span class="p">,</span><span class="w">                    </span><span class="c1">// インポートの名前空間(モジュール名)</span>
+<span class="w">    </span><span class="s">&quot;log&quot;</span><span class="p">,</span><span class="w">                        </span><span class="c1">// 関数名</span>
+<span class="w">    </span><span class="n">FunctionType</span><span class="p">.</span><span class="na">of</span><span class="p">(</span>
+<span class="w">        </span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="n">ValType</span><span class="p">.</span><span class="na">I32</span><span class="p">,</span><span class="w"> </span><span class="n">ValType</span><span class="p">.</span><span class="na">I32</span><span class="p">),</span><span class="w">  </span><span class="c1">// 引数: (len, offset)</span>
+<span class="w">        </span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">()</span><span class="w">                            </span><span class="c1">// 戻り値: なし</span>
+<span class="w">    </span><span class="p">),</span>
+<span class="w">    </span><span class="p">(</span><span class="n">Instance</span><span class="w"> </span><span class="n">instance</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="p">...</span><span class="w"> </span><span class="n">args</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="n">len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="n">args</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span>
+<span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="n">offset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="n">args</span><span class="o">[</span><span class="mi">1</span><span class="o">]</span><span class="p">;</span>
+<span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="n">message</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">memory</span><span class="p">().</span><span class="na">readString</span><span class="p">(</span><span class="n">offset</span><span class="p">,</span><span class="w"> </span><span class="n">len</span><span class="p">);</span>
+<span class="w">        </span><span class="n">System</span><span class="p">.</span><span class="na">out</span><span class="p">.</span><span class="na">println</span><span class="p">(</span><span class="n">message</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span><span class="w">   </span><span class="c1">// 戻り値なしの場合は null</span>
+<span class="w">    </span><span class="p">});</span>
+</code></pre></div>
+
+<p>インスタンス化時に渡す方法は2つあります。</p>
+<div class="hl"><pre><span></span><code><span class="c1">// (a) ImportValues を直接組む</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">imports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ImportValues</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">addFunction</span><span class="p">(</span><span class="n">func</span><span class="p">).</span><span class="na">build</span><span class="p">();</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">).</span><span class="nc">withImportValues</span><span class="p">(</span><span class="n">imports</span><span class="p">).</span><span class="na">build</span><span class="p">();</span>
+
+<span class="c1">// (b) Store 経由(複数モジュールを扱うならこちら。4.8参照)</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Store</span><span class="p">();</span>
+<span class="n">store</span><span class="p">.</span><span class="na">addFunction</span><span class="p">(</span><span class="n">func</span><span class="p">);</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">instance2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">store</span><span class="p">.</span><span class="na">instantiate</span><span class="p">(</span><span class="s">&quot;logger&quot;</span><span class="p">,</span><span class="w"> </span><span class="kd">module</span><span class="err">);</span>
+</code></pre></div>
+
+<p><strong>仕組み</strong>: ホスト関数の必要3要素は「①インポートの名前空間と関数名、②Wasm の型シグネチャ、③呼ばれたときに実行するラムダ」です。ラムダには呼び出し元の <code>Instance</code> が渡ってくるので、この例のように<strong>ゲストのメモリを読んで</strong>文字列を復元する、というポインタ渡しプロトコルの受け側を書けます。</p>
+<p><strong>注意点</strong>: 3.5節の通り、ホスト関数はサンドボックスの脱出口=セキュリティ境界です。信頼できないゲストに与えるホスト関数では、引数(特にポインタと長さ)の検証、副作用の最小化、例外の扱いに注意してください。</p>
+<h2 id="4-5-WASI-Preview-1-標準的なシステムインターフェース">4.5 WASI Preview 1 — 標準的なシステムインターフェース</h2>
+<p><strong>目的</strong>: <code>wasi_snapshot_preview1</code> を要求するモジュール(Rust の <code>wasm32-wasip1</code>、TinyGo の <code>-target=wasi</code> 等でビルドしたもの)を動かす。</p>
+<p>WASI はゲストがインポートできる「システム機能のホスト関数スイート」で、stdin/stdout/stderr、環境変数、コマンドライン引数、システムクロック、乱数、基本的なファイル読み書き(<strong>仮想ファイルシステム経由</strong>)を提供します。すべて仮想化されており、ゲストはホスト資源に直接触れません。</p>
+<p><strong>依存</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="nt">&lt;dependency&gt;</span>
+<span class="w">  </span><span class="nt">&lt;groupId&gt;</span>com.dylibso.chicory<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>wasi<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;version&gt;</span>1.7.5<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div>
+
+<p><strong>基本コード</strong>(標準入出力をメモリ上のストリームに差し替え、Rust 製の「stdin の名前に挨拶する」モジュールを動かす公式例):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasi.WasiOptions</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.wasi.WasiPreview1</span><span class="p">;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.runtime.Store</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">fakeStdin</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ByteArrayInputStream</span><span class="p">(</span><span class="s">&quot;Chicory&quot;</span><span class="p">.</span><span class="na">getBytes</span><span class="p">());</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">fakeStdout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">();</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">fakeStderr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">();</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">wasiOpts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">WasiOptions</span><span class="p">.</span><span class="na">builder</span><span class="p">()</span>
+<span class="w">        </span><span class="p">.</span><span class="na">withStdout</span><span class="p">(</span><span class="n">fakeStdout</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">withStderr</span><span class="p">(</span><span class="n">fakeStderr</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">withStdin</span><span class="p">(</span><span class="n">fakeStdin</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">wasi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">WasiPreview1</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">withOptions</span><span class="p">(</span><span class="n">wasiOpts</span><span class="p">).</span><span class="na">build</span><span class="p">();</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Store</span><span class="p">().</span><span class="na">addFunction</span><span class="p">(</span><span class="n">wasi</span><span class="p">.</span><span class="na">toHostFunctions</span><span class="p">());</span>
+<span class="c1">// WASI コマンド型モジュールはインスタンス化と同時に _start が実行される</span>
+<span class="n">store</span><span class="p">.</span><span class="na">instantiate</span><span class="p">(</span><span class="s">&quot;greeter&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;greet-wasi.wasm&quot;</span><span class="p">)));</span>
+
+<span class="k">assert</span><span class="w"> </span><span class="n">fakeStdout</span><span class="p">.</span><span class="na">toString</span><span class="p">().</span><span class="na">equals</span><span class="p">(</span><span class="s">&quot;Hello, Chicory!&quot;</span><span class="p">);</span>
+</code></pre></div>
+
+<p>システムの実ストリームに繋ぐ短縮形も用意されています。</p>
+<div class="hl"><pre><span></span><code><span class="kd">var</span><span class="w"> </span><span class="n">wasiOpts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">WasiOptions</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">inheritSystem</span><span class="p">().</span><span class="na">build</span><span class="p">();</span>
+</code></pre></div>
+
+<p><strong>主なオプション</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>オプション</th>
+<th>効果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>withStdin/withStdout/withStderr</code></td>
+<td>標準入出力の接続(Java の InputStream/OutputStream)</td>
+</tr>
+<tr>
+<td><code>inheritSystem()</code></td>
+<td>System.in/out/err にまとめて接続</td>
+</tr>
+<tr>
+<td><code>withArguments(List.of("prog", "--flag"))</code></td>
+<td>argv。先頭は実行ファイル名相当</td>
+</tr>
+<tr>
+<td><code>withEnvironment("KEY", "value")</code></td>
+<td>環境変数(複数回呼べる)</td>
+</tr>
+<tr>
+<td><code>withDirectory(guestPath, hostPath)</code></td>
+<td>ディレクトリをゲストに見せる(プリオープン)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>仕組みと注意点</strong>:</p>
+<ul>
+<li>WASI コマンド型モジュールは仕様により暗黙に <code>_start</code> を呼ぶため、「インスタンス化=実行」です。</li>
+<li>ディスク操作は限定サポートで、公式は<strong>仮想ファイルシステム(Google Jimfs)上でのみテストしており、同じ構成を推奨</strong>しています。実ディレクトリを直接見せるのではなく、Jimfs に必要なファイルだけコピーして <code>withDirectory</code> で渡すのが公式の例です。サンドボックスの観点でもこの方式が安全です。</li>
+<li>未サポートの WASI 関数をゲストが呼ぶと <code>WasmRuntimeException</code> が投げられます。1.7.5 時点の対応表では大半の <code>fd_*</code>/<code>path_*</code> は対応済みで、<strong>ソケット系(<code>sock_accept</code>/<code>sock_recv</code>/<code>sock_send</code>)と <code>fd_fdstat_set_rights</code> は未対応</strong>、<code>clock_time_get</code> は CPU 時間系クロック ID 非対応、<code>path_symlink</code> はダングリングシンボリックリンク非対応、といった制限があります(全表は公式ドキュメント usage/wasi 参照)。ネットワークを使うゲストは基本的に動かない、と考えてください。</li>
+</ul>
+<h2 id="4-6-ランタイムコンパイラ-その場で-JVM-バイトコードへ">4.6 ランタイムコンパイラ — その場で JVM バイトコードへ</h2>
+<p><strong>目的</strong>: インタプリタのまま意味論を変えずに実行速度を上げる。</p>
+<p><strong>依存とコード</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="nt">&lt;dependency&gt;</span>
+<span class="w">  </span><span class="nt">&lt;groupId&gt;</span>com.dylibso.chicory<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>compiler<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;version&gt;</span>1.7.5<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.compiler.MachineFactoryCompiler</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;your.wasm&quot;</span><span class="p">));</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+        <span class="err">.</span><span class="nc">withMachineFactory</span><span class="p">(</span><span class="n">MachineFactoryCompiler</span><span class="p">::</span><span class="n">compile</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+</code></pre></div>
+
+<p><strong>仕組み</strong>: Wasm 命令列を<strong>その場でメモリ上の Java バイトコードに変換</strong>します。現状は全関数を先行(eager)コンパイルするため、インスタンス初期化時に小さなペナルティを払い、実行時のスピードアップで回収するモデルです。インタプリタと同じ spec テストを 100% パスします。</p>
+<p><strong>注意点</strong>:</p>
+<ul>
+<li>ASM への依存と<strong>リフレクション+動的クラスロード</strong>が入ります。標準的な JVM では問題ありませんが、Android や GraalVM native-image では動かないか追加設定が要ります(その場合は 4.7 のビルド時コンパイルへ)。</li>
+<li><strong>JVM のメソッドサイズ上限</strong>(64KiB)を超える巨大な Wasm 関数はコンパイルできず、その関数だけインタプリタにフォールバックします。既定の <code>InterpreterFallback.WARN</code> では標準エラーに <code>Warning: using interpreted mode for WASM function index: 232</code> のような警告が出ます。制御は次の通りです。</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.compiler.InterpreterFallback</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+        <span class="err">.</span><span class="nc">withMachineFactory</span><span class="p">(</span>
+<span class="w">            </span><span class="n">MachineFactoryCompiler</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+                <span class="err">.</span><span class="nc">withInterpreterFallback</span><span class="p">(</span><span class="n">InterpreterFallback</span><span class="p">.</span><span class="na">SILENT</span><span class="p">)</span><span class="w"> </span><span class="c1">// WARN / SILENT / FAIL</span>
+<span class="w">                </span><span class="p">.</span><span class="na">compile</span><span class="p">())</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+
+<span class="c1">// あるいは、対象関数を明示指定(コンパイル時間も短縮できる)</span>
+<span class="n">MachineFactoryCompiler</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+        <span class="err">.</span><span class="nc">withInterpretedFunctions</span><span class="p">(</span><span class="n">Set</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="mi">232</span><span class="p">,</span><span class="w"> </span><span class="mi">251</span><span class="p">))</span>
+<span class="w">        </span><span class="p">.</span><span class="na">compile</span><span class="p">();</span>
+</code></pre></div>
+
+<p><code>FAIL</code> にすると巨大関数があった時点で例外になります(「絶対に解釈実行させたくない」場合)。関数インデックスの一覧は、一度 <code>WARN</code> で動かして収集するのが公式推奨の手順です。</p>
+<ul>
+<li>実験的機能として<strong>コンパイル結果のキャッシュ</strong>があります(<code>dircache-experimental</code> アーティファクト)。モジュールの SHA-256 ダイジェストをキーに、コンパイル済みバイトコードの jar をディレクトリに保存し、次回以降のコンパイルをスキップして起動を速くします。ファイルシステムのアトミック move を使うためスレッド間・プロセス間で共有可能ですが、<strong>エビクション(自動削除)はない</strong>ので、ディスクは自分で管理します。</li>
+</ul>
+<h2 id="4-7-ビルド時コンパイル-Wasm-を-class-にして同梱する">4.7 ビルド時コンパイル — Wasm を .class にして同梱する</h2>
+<p><strong>目的</strong>: 実行時コンパイルのコストとリフレクションを排除し、最高の起動特性と native-image 互換性を得る。</p>
+<p><strong>仕組みと利点</strong>(公式ドキュメントの列挙):</p>
+<ul>
+<li>変換がビルド時に済むため<strong>インスタンス初期化が速い</strong></li>
+<li><strong>リフレクション不要</strong> → native-image で扱いやすい</li>
+<li>実行時依存が減る(ASM はビルド時のみ)</li>
+<li><strong>Wasm モジュールを自己完結の jar として配布できる</strong> — 「元々 Java 向けでないソフトウェアを Java プラットフォームで配布する便利な手段」。sqlite4j などの「純Java化」ライブラリ群はまさにこれです</li>
+</ul>
+<p><strong>Maven プラグイン設定</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="nt">&lt;plugin&gt;</span>
+<span class="w">  </span><span class="nt">&lt;groupId&gt;</span>com.dylibso.chicory<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>chicory-compiler-maven-plugin<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;executions&gt;</span>
+<span class="w">    </span><span class="nt">&lt;execution&gt;</span>
+<span class="w">      </span><span class="nt">&lt;id&gt;</span>compiler-gen<span class="nt">&lt;/id&gt;</span>
+<span class="w">      </span><span class="nt">&lt;goals&gt;&lt;goal&gt;</span>compile<span class="nt">&lt;/goal&gt;&lt;/goals&gt;</span>
+<span class="w">      </span><span class="nt">&lt;configuration&gt;</span>
+<span class="w">        </span><span class="nt">&lt;wasmFile&gt;</span>src/main/resources/add.wasm<span class="nt">&lt;/wasmFile&gt;</span>
+<span class="w">        </span><span class="nt">&lt;name&gt;</span>org.acme.wasm.Add<span class="nt">&lt;/name&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/configuration&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/execution&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/executions&gt;</span>
+<span class="nt">&lt;/plugin&gt;</span>
+</code></pre></div>
+
+<p>生成されたクラスは <code>load()</code>(WasmModule の取得)と <code>create(Instance)</code>(Machine ファクトリ)を持ち、次のように使います。</p>
+<div class="hl"><pre><span></span><code><span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="n">Add</span><span class="p">.</span><span class="na">load</span><span class="p">())</span>
+<span class="w">        </span><span class="p">.</span><span class="na">withMachineFactory</span><span class="p">(</span><span class="n">Add</span><span class="p">::</span><span class="n">create</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+</code></pre></div>
+
+<p>さらに <code>moduleInterface</code> パラメータを足すと、モジュールのエクスポート/インポートに対応した<strong>型付き Java ラッパー</strong>(<code>Demo_ModuleExports</code> / <code>Demo_ModuleImports</code>)も生成され、<code>long[]</code> の手動マッピングから解放されます(アノテーションプロセッサ方式より簡単、と公式が案内しています)。Gradle プラグインと CLI も同じ機能を提供します。</p>
+<p><strong>注意点</strong>: 動的ロードは不可(ビルド時に <code>.wasm</code> が確定している必要がある)。巨大関数は<strong>既定でビルド失敗</strong>します(ランタイムコンパイラの WARN と違い FAIL がデフォルト)。エラーメッセージ中の関数インデックスを <code>interpreterFallback</code> = WARN で収集し、明示リストを設定するのは 4.6 と同じ流儀です。</p>
+<h2 id="4-8-Store-とリンク-複数モジュールの合成">4.8 Store とリンク — 複数モジュールの合成</h2>
+<p><strong>目的</strong>: 複数のモジュール/ホスト関数を名前で管理し、モジュール間のインポート/エクスポートを繋ぐ。</p>
+<p><code>Store</code> は Wasm 仕様の store 概念に対応する中間レベルの抽象で、関数・グローバル・メモリ・テーブルを<strong>名前付きで</strong>収集します。</p>
+<div class="hl"><pre><span></span><code><span class="kd">var</span><span class="w"> </span><span class="n">store</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Store</span><span class="p">();</span>
+<span class="n">store</span><span class="p">.</span><span class="na">addFunction</span><span class="p">(</span><span class="n">consoleLogFunc</span><span class="p">);</span><span class="w">                    </span><span class="c1">// 単発のホスト関数登録</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">store</span><span class="p">.</span><span class="na">instantiate</span><span class="p">(</span><span class="s">&quot;logger&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">loggerModule</span><span class="p">);</span><span class="w"> </span><span class="c1">// 名前付きインスタンス化</span>
+</code></pre></div>
+
+<p><code>store.instantiate("logger", ...)</code> は、次の低レベル操作の短縮形であることが公式に明記されています。</p>
+<div class="hl"><pre><span></span><code><span class="kd">var</span><span class="w"> </span><span class="n">imports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">store</span><span class="p">.</span><span class="na">toImportValues</span><span class="p">();</span>
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="n">m</span><span class="p">).</span><span class="na">withImportValues</span><span class="p">(</span><span class="n">imports</span><span class="p">).</span><span class="na">build</span><span class="p">();</span>
+<span class="n">store</span><span class="p">.</span><span class="na">register</span><span class="p">(</span><span class="s">&quot;logger&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">instance</span><span class="p">);</span>
+</code></pre></div>
+
+<p>名前付きで登録されたインスタンスのエクスポートは、<strong><code>logger.logIt</code> のように修飾されて他のインスタンスから見える</strong>ようになります。これがモジュール間リンクの基本メカニズムです。</p>
+<p><strong>注意点</strong>(公式の Notes をそのまま):</p>
+<ul>
+<li>同名で再登録すると、一致する名前の関数等は<strong>上書き</strong>されます。</li>
+<li><code>Store</code> は<strong>ミュータブルで、スレッドセーフではなく、共有を想定しない</strong>オブジェクトです。</li>
+<li><strong>モジュール間の依存関係を自動解決しません</strong>。依存の順にインスタンス化・登録するのは利用者の責務です。</li>
+</ul>
+<h2 id="4-9-その他の基本機能">4.9 その他の基本機能</h2>
+<p><strong>ロギング</strong> — 既定では外部依存を避けるため <strong>JDK Platform Logging(JEP 264)</strong>を使います。<code>java.util.logging.config.file</code> で設定でき、slf4j や log4j2 の JEP 264 アダプタも利用可能。それでも合わなければ <code>com.dylibso.chicory.log.Logger</code> を自前実装して差し込めます(<code>SystemLogger</code> が標準実装)。</p>
+<p><strong>SIMD</strong> — <code>simd</code> アーティファクトを追加し、Machine を差し替えます。</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.simd.SimdInterpreterMachine</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+        <span class="err">.</span><span class="nc">withMachineFactory</span><span class="p">(</span><span class="n">SimdInterpreterMachine</span><span class="p">::</span><span class="k">new</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+</code></pre></div>
+
+<p>制約は「<strong>Java 21+ かつインタプリタモードのみ</strong>」(Vector API / JEP 448 を使うため)。validation 必須です。</p>
+<p><strong>メモリ実装の選択</strong> — 1.1.0 以降、最適化された <code>ByteArrayMemory</code> が使えます。</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">com.dylibso.chicory.runtime.ByteArrayMemory</span><span class="p">;</span>
+
+<span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+        <span class="err">.</span><span class="nc">withMemoryFactory</span><span class="p">(</span><span class="n">ByteArrayMemory</span><span class="p">::</span><span class="k">new</span><span class="p">)</span>
+<span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+</code></pre></div>
+
+<p>公式の指針は「<strong>最近の OpenJDK では ByteArrayMemory 推奨、Android などそれ以外の VM では既定の ByteBufferMemory を維持</strong>」「変更はベンチマークと分析を伴わずに行わないこと」です。</p>
+<p><strong>モダンプロポーザル対応</strong> — 1.7.5 時点で、Tail Call・例外処理・スレッド(shared memory は <code>MemoryLimits</code> の <code>shared</code> フラグとしてモデル化)・拡張定数式・<strong>WasmGC</strong>・<strong>Multi-Memory</strong> がロードマップ上チェック済みです。GC オブジェクトはランタイム内で <code>WasmStruct</code> / <code>WasmArray</code> / <code>WasmI31Ref</code> として表現されます(内部構造は第7章)。SIMD のみ上記の Java 21+/インタプリタ限定という条件付きです。</p>
+<hr />
+<h1 id="第5章-実践レシピ-やりたいこと-から引く">第5章 実践レシピ — 「やりたいこと」から引く</h1>
+<p>第4章が機能単位だったのに対し、この章はユースケース単位です。</p>
+<h2 id="5-1-言語別-ゲストモジュールのビルドと呼び出し">5.1 言語別: ゲストモジュールのビルドと呼び出し</h2>
+<h3 id="Rust">Rust</h3>
+<table>
+<thead>
+<tr>
+<th>用途</th>
+<th>ターゲット</th>
+<th>備考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>純粋な計算ライブラリ</td>
+<td><code>wasm32-unknown-unknown</code></td>
+<td>インポートなしの「純粋計算」を作りやすい</td>
+</tr>
+<tr>
+<td>CLI 的プログラム / std 利用</td>
+<td><code>wasm32-wasip1</code></td>
+<td>WASI 必須(4.5)</td>
+</tr>
+</tbody>
+</table>
+<div class="hl"><pre><span></span><code>rustup<span class="w"> </span>target<span class="w"> </span>add<span class="w"> </span>wasm32-wasip1
+cargo<span class="w"> </span>build<span class="w"> </span>--release<span class="w"> </span>--target<span class="w"> </span>wasm32-wasip1
+</code></pre></div>
+
+<p>文字列受け渡しには 4.3 の <code>alloc</code>/<code>dealloc</code> パターンをエクスポートしておくと Java 側が楽になります。</p>
+<h3 id="Go-TinyGo">Go (TinyGo)</h3>
+<p>本家 Go の Wasm サポートは JS 環境前提の部分が多いため、ライブラリ的な用途では <strong>TinyGo</strong> が定番です。</p>
+<div class="hl"><pre><span></span><code><span class="c1">//export add</span>
+<span class="kd">func</span><span class="w"> </span><span class="nx">add</span><span class="p">(</span><span class="nx">x</span><span class="p">,</span><span class="w"> </span><span class="nx">y</span><span class="w"> </span><span class="kt">int32</span><span class="p">)</span><span class="w"> </span><span class="kt">int32</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">y</span><span class="w"> </span><span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="c1">// TinyGo では必要</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>tinygo<span class="w"> </span>build<span class="w"> </span>-o<span class="w"> </span>add.wasm<span class="w"> </span>-target<span class="o">=</span>wasi<span class="w"> </span>./main.go
+</code></pre></div>
+
+<p><code>-target=wasi</code> なので Java 側は <code>WasiPreview1</code> の接続が必要です(4.5)。Debezium の Go 製 SMT プラグインや、OpenFeature の Go Feature Flag 評価がこの構成の実例です。</p>
+<h3 id="C-C">C / C++</h3>
+<p>wasi-sdk(clang)でビルドするのが素直です。sqlite4j のように「著名な C ライブラリを Wasm 化して純Java ライブラリとして配布する」パターンの土台になります。</p>
+<div class="hl"><pre><span></span><code><span class="nv">$WASI_SDK</span>/bin/clang<span class="w"> </span>--target<span class="o">=</span>wasm32-wasip1<span class="w"> </span>-O2<span class="w"> </span>-o<span class="w"> </span>lib.wasm<span class="w"> </span>lib.c<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-Wl,--export<span class="o">=</span>my_func<span class="w"> </span>-Wl,--export<span class="o">=</span>malloc<span class="w"> </span>-Wl,--export<span class="o">=</span>free
+</code></pre></div>
+
+<p><code>malloc</code>/<code>free</code> をエクスポートしておくと、4.3 のメモリ受け渡しにそのまま使えます。</p>
+<h3 id="Zig">Zig</h3>
+<div class="hl"><pre><span></span><code>zig<span class="w"> </span>build-exe<span class="w"> </span>lib.zig<span class="w"> </span>-target<span class="w"> </span>wasm32-wasi<span class="w"> </span>-O<span class="w"> </span>ReleaseSmall
+</code></pre></div>
+
+<p>Zig は Wasm バイナリが小さく出る傾向があり、配布サイズに効きます。</p>
+<p><strong>共通の勘所</strong>: どの言語でも、Java 側から見える世界は「エクスポート関数 + 線形メモリ」だけです。言語ごとの違いは(a)どの WASI 機能を暗黙に要求するか、(b)メモリ確保関数を何という名前でエクスポートするか、の2点に集約されます。まず <code>wasm-objdump -x</code>(wabt)や wasm-tools で import/export セクションを眺める癖をつけてください。</p>
+<h2 id="5-2-プラグインシステムの構築-信頼できないコードを安全に動かす">5.2 プラグインシステムの構築 — 信頼できないコードを安全に動かす</h2>
+<p>Chicory の代表ユースケースです。設計の骨子:</p>
+<ol>
+<li><strong>モジュールは1回パース、インスタンスは使い捨て</strong> — <code>WasmModule</code> は不変なのでキャッシュし、実行のたびに <code>Instance</code> を作って捨てる。状態の持ち越し・リークを構造的に防げます。</li>
+<li><strong>ホスト関数 API を最小に設計</strong> — プラグインに見せる機能(3.5節のセキュリティ境界)を明示的に列挙。WASI を渡すなら <code>WasiOptions</code> を空に近い構成にし、ディレクトリは Jimfs 経由の仮想 FS だけを見せる。</li>
+<li><strong>リソース制限</strong> — <code>withMemoryLimits</code> でメモリ上限、<code>ExecutorService</code> + タイムアウト + interrupt で CPU 時間上限(6.5)。</li>
+<li><strong>エラーの封じ込め</strong> — <code>ChicoryException</code> を捕捉してプラグイン単位の失敗に留める(5.6)。</li>
+</ol>
+<div class="hl"><pre><span></span><code><span class="c1">// 概形</span>
+<span class="kd">public</span><span class="w"> </span><span class="kd">final</span><span class="w"> </span><span class="kd">class</span> <span class="nc">PluginHost</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">private</span><span class="w"> </span><span class="kd">final</span><span class="w"> </span><span class="n">WasmModule</span><span class="w"> </span><span class="kd">module</span><span class="err">;</span>          <span class="err">//</span> <span class="nc">キャッシュ</span><span class="p">(</span><span class="n">スレッド共有可</span><span class="p">)</span>
+<span class="w">    </span><span class="kd">private</span><span class="w"> </span><span class="kd">final</span><span class="w"> </span><span class="n">ExecutorService</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Executors</span><span class="p">.</span><span class="na">newCachedThreadPool</span><span class="p">();</span>
+
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kt">byte</span><span class="o">[]</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="kt">byte</span><span class="o">[]</span><span class="w"> </span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="n">Duration</span><span class="w"> </span><span class="n">timeout</span><span class="p">)</span><span class="w"> </span><span class="kd">throws</span><span class="w"> </span><span class="n">Exception</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="n">future</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pool</span><span class="p">.</span><span class="na">submit</span><span class="p">(()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="kd">var</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+                    <span class="err">.</span><span class="nc">withImportValues</span><span class="p">(</span><span class="n">minimalImports</span><span class="p">())</span>
+<span class="w">                    </span><span class="p">.</span><span class="na">withMemoryLimits</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">MemoryLimits</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">64</span><span class="p">))</span><span class="w"> </span><span class="c1">// 例: 最大64ページ=4MiB</span>
+<span class="w">                    </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+<span class="w">            </span><span class="c1">// …input を書き込み、実行し、結果を読む(4.3)</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">output</span><span class="p">;</span>
+<span class="w">        </span><span class="p">});</span>
+<span class="w">        </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="n">future</span><span class="p">.</span><span class="na">get</span><span class="p">(</span><span class="n">timeout</span><span class="p">.</span><span class="na">toMillis</span><span class="p">(),</span><span class="w"> </span><span class="n">TimeUnit</span><span class="p">.</span><span class="na">MILLISECONDS</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="n">TimeoutException</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">future</span><span class="p">.</span><span class="na">cancel</span><span class="p">(</span><span class="kc">true</span><span class="p">);</span><span class="w">   </span><span class="c1">// interrupt が Wasm 実行を停止させる</span>
+<span class="w">            </span><span class="k">throw</span><span class="w"> </span><span class="n">e</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Extism Chicory SDK は、この「プラグインシステムの枠組み」をプロトコルごと提供する上位レイヤなので、独自設計の前に一度検討する価値があります。</p>
+<h2 id="5-3-C資産の純Java化-レシピ-sqlite4j-パターン">5.3 「C資産の純Java化」レシピ — sqlite4j パターン</h2>
+<p>sqlite4j / jq4j / protobuf4j / quickjs4j が実証しているパターンです。ビルド時コンパイラ(4.7)の「Wasm モジュールを自己完結 jar として配布する」能力が核になります。</p>
+<figure class="fig ">
+
+<svg viewBox="0 0 720 300" role="img" aria-label="C資産を純Java jarにするパイプライン">
+<defs>
+<marker id="ar7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<rect x="40" y="18" width="280" height="44" rx="8" class="bx-native"/>
+<text x="180" y="37" class="t tb mid">C ライブラリのソース</text>
+<text x="180" y="54" class="ts mid">SQLite / jq / protoc …</text>
+<path d="M180 62 V90" class="ln" fill="none" marker-end="url(#ar7)"/>
+<text x="192" y="82" class="tm">wasi-sdk(CI 上で1回ビルド)</text>
+<rect x="40" y="94" width="280" height="40" rx="8" class="bx-guest"/>
+<text x="180" y="118" class="t tb mid">lib.wasm(resources に同梱)</text>
+<path d="M180 134 V162" class="ln" fill="none" marker-end="url(#ar7)"/>
+<text x="192" y="154" class="tm">chicory-compiler-maven-plugin</text>
+<rect x="40" y="166" width="280" height="44" rx="8" class="bx-accent"/>
+<text x="180" y="185" class="t tb mid">生成 .class 群 + 型付きラッパー</text>
+<text x="180" y="202" class="ts mid">moduleInterface で Exports/Imports も生成</text>
+<path d="M180 210 V238" class="ln" fill="none" marker-end="url(#ar7)"/>
+<text x="192" y="230" class="tm">通常の jar パッケージング</text>
+<rect x="40" y="242" width="280" height="44" rx="8" class="bx-host"/>
+<text x="180" y="261" class="t tb mid">純Java ライブラリ jar</text>
+<text x="180" y="278" class="ts mid">利用者から見ればただの依存1行</text>
+<g>
+<text x="380" y="40" class="t tb">この形が消す摩擦</text>
+<text x="380" y="66" class="ts">・OS × Arch のネイティブバイナリ行列 → jar 1個に</text>
+<text x="380" y="86" class="ts">・JNI 境界のクラッシュ/ツール断絶 → JVM 内で完結</text>
+<text x="380" y="112" class="t tb">代償</text>
+<text x="380" y="138" class="ts">・ネイティブ版よりは遅い(第6章の手順で自分の</text>
+<text x="380" y="156" class="ts">  ワークロードを計測して判断する)</text>
+<text x="380" y="182" class="t tb">実例</text>
+<text x="380" y="208" class="tm">sqlite4j / pglite4j / jq4j</text>
+<text x="380" y="226" class="tm">protobuf4j / quickjs4j / lumis4j</text>
+</g>
+</svg>
+<figcaption><span class="fig-no">図7</span>「C資産の純Java化」(sqlite4j パターン)のビルドパイプライン。利用者に届くのはネイティブ依存ゼロの普通の jar。</figcaption>
+</figure>
+
+<p>利点は第1章の「配布の摩擦」がゼロになること。JNI 版 SQLite ドライバの OS×Arch 行列問題が、jar 1個に畳み込まれます。トレードオフはネイティブ版比の実行速度で、これは第6章の計測手順で自分のワークロードに対して定量化してください。</p>
+<h2 id="5-4-フレームワーク統合">5.4 フレームワーク統合</h2>
+<p><strong>Quarkus</strong>: Quarkiverse に <code>quarkus-chicory</code> 拡張があり、native-image を含むビルド統合が提供されます。CEL ポリシーエンジンを Chicory で動かす公式ブログ(quarkus.io)の事例もあります。関連拡張として <code>quarkus-proxy-wasm</code>、<code>quarkus-quickjs4j</code>、<code>quarkus-grpc-zero</code> があります。</p>
+<p><strong>Spring Boot(汎用 Java アプリ)</strong>: 特別な統合は不要で、<code>WasmModule</code> をシングルトン Bean、<code>Instance</code> をリクエストスコープ(または都度生成)にするのが自然な構成です。ビルド時コンパイル + <code>dircache</code> は起動時間の改善に効きます。</p>
+<p><strong>native-image</strong>: インタプリタとビルド時コンパイルはそのまま通ります。ランタイムコンパイラはリフレクション+動的クラスロードのため原則不向きです(4.6)。</p>
+<h2 id="5-5-テストの書き方">5.5 テストの書き方</h2>
+<p><strong>(1) WAT をテスト内でインラインビルド</strong> — <code>wabt</code> モジュールの <code>Wat2Wasm.parse</code>(2.3)を使うと、テストケースごとに小さなモジュールをソース管理でき、フィクスチャの <code>.wasm</code> バイナリをリポジトリに撒かずに済みます。</p>
+<div class="hl"><pre><span></span><code><span class="nd">@Test</span>
+<span class="kt">void</span><span class="w"> </span><span class="nf">addsTwoNumbers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">wasm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Wat2Wasm</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="s">&quot;(module (func (export \&quot;add\&quot;) ... ))&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="n">inst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="n">wasm</span><span class="p">)).</span><span class="na">build</span><span class="p">();</span>
+<span class="w">    </span><span class="n">assertEquals</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span><span class="w"> </span><span class="n">inst</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;add&quot;</span><span class="p">).</span><span class="na">apply</span><span class="p">(</span><span class="mi">40</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>(2) WASI モジュールの入出力検証</strong> — 4.5 のように stdin/stdout/stderr を <code>ByteArrayInput/OutputStream</code> に差し替えれば、外部プロセス不要で「コマンド型」ゲストの振る舞いを丸ごと assert できます。</p>
+<p><strong>(3) ゲスト言語側のビルドを CI に含めるか</strong> — 含めると再現性は上がるがツールチェーン管理が重くなります。実務ではビルド済み <code>.wasm</code> をアーティファクトとしてバージョン管理(またはパッケージレジストリ管理)し、ダイジェストを固定するのが均衡点です。ちなみに Chicory 自身は Wasm 公式テストスイート(.wast)から JUnit を自動生成してエンジンを検証しています(第7章 7.6)。</p>
+<h2 id="5-6-エラーハンドリング設計">5.6 エラーハンドリング設計</h2>
+<p>Chicory の例外はすべて <code>ChicoryException</code>(<code>RuntimeException</code> のサブクラス)に根を持ちます。1.7.5 のソースで確認した階層:</p>
+<div class="hl"><pre><span></span><code>ChicoryException (RuntimeException)
+├─ MalformedException        … バイナリ形式が壊れている(パース時)
+├─ InvalidException          … validation 違反(型検査エラー)
+├─ UnlinkableException       … インポート解決の失敗(リンク時)
+├─ UninstantiableException   … インスタンス化の失敗(start でのトラップ等)
+├─ TrapException             … 実行時トラップ(unreachable、範囲外アクセス等)
+├─ WasmRuntimeException      … ランタイム都合のエラー(未サポート WASI 関数呼び出し等)
+├─ ChicoryInterruptedException … スレッド割り込みによる実行中断
+├─ ExecutionCompletedException … 実行完了の内部シグナル
+└─ WasiExitException (wasi)  … ゲストの proc_exit。終了コードを保持
+</code></pre></div>
+
+<p>設計指針:</p>
+<ul>
+<li><strong>フェーズで捕まえ分ける</strong>: パース/リンク時例外(Malformed/Invalid/Unlinkable)は「デプロイ不良」であり、起動時に fail-fast させる。実行時例外(Trap/WasmRuntime)は「その呼び出しの失敗」であり、リクエスト単位で処理する。</li>
+<li><strong><code>WasiExitException</code> は準正常系</strong>: WASI コマンド型ゲストの <code>exit(n)</code> はこの例外で表現されるので、捕捉して終了コードを取り出します(exit 0 の扱いに注意)。</li>
+<li><strong>タイムアウト</strong>: interrupt 由来の <code>ChicoryInterruptedException</code> を「実行打ち切り」として明示的にハンドリングする(6.5)。</li>
+<li><strong>インスタンスを疑ったら捨てる</strong>: トラップ後のゲスト内部状態(アロケータ等)の健全性は保証されないため、疑わしいインスタンスは再利用せず作り直すのが安全です。<code>WasmModule</code> は無傷なので再インスタンス化は安価です。</li>
+</ul>
+<hr />
+<h1 id="第6章-パフォーマンスと運用">第6章 パフォーマンスと運用</h1>
+<h2 id="6-1-エンジン選択-最初にして最大のチューニング">6.1 エンジン選択 — 最初にして最大のチューニング</h2>
+<p>第3章 3.3 の3モードの選択が支配的です。定性的な指針:</p>
+<figure class="fig ">
+
+<svg viewBox="0 0 720 260" role="img" aria-label="実行エンジンの選び方">
+<defs>
+<marker id="ar8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<rect x="20" y="20" width="300" height="44" rx="8" class="chip"/>
+<text x="170" y="46" class="t mid">開発中・とりあえず動かす</text>
+<rect x="20" y="78" width="300" height="44" rx="8" class="chip"/>
+<text x="170" y="98" class="t mid">動的に .wasm を受け取る本番</text>
+<text x="170" y="114" class="ts mid">プラグイン投稿など</text>
+<rect x="20" y="136" width="300" height="44" rx="8" class="chip"/>
+<text x="170" y="156" class="t mid">.wasm がビルド時に確定する本番</text>
+<text x="170" y="172" class="ts mid">native-image 併用もこちら</text>
+<rect x="20" y="194" width="300" height="44" rx="8" class="chip"/>
+<text x="170" y="214" class="t mid">数値計算で SIMD が効く</text>
+<text x="170" y="230" class="ts mid">Java 21+ 限定</text>
+<path d="M320 42 H436" class="ln" fill="none" marker-end="url(#ar8)"/>
+<path d="M320 100 H436 V74" class="ln" fill="none" marker-end="url(#ar8)"/>
+<path d="M320 158 H436" class="ln" fill="none" marker-end="url(#ar8)"/>
+<path d="M320 216 H400 V60 H436" class="ln" fill="none" marker-end="url(#ar8)"/>
+<rect x="440" y="20" width="260" height="52" rx="8" class="bx-accent"/>
+<text x="570" y="42" class="t tb mid">インタプリタ(既定)</text>
+<text x="570" y="60" class="ts mid">SIMD 時は SimdInterpreterMachine</text>
+<rect x="440" y="86" width="260" height="52" rx="8" class="bx-accent"/>
+<text x="570" y="108" class="t tb mid">ランタイムコンパイラ</text>
+<text x="570" y="126" class="ts mid">+ dircache で初期化を短縮</text>
+<rect x="440" y="152" width="260" height="52" rx="8" class="bx-accent"/>
+<text x="570" y="174" class="t tb mid">ビルド時コンパイラ</text>
+<text x="570" y="192" class="ts mid">最速の初期化・リフレクション不要</text>
+</svg>
+<figcaption><span class="fig-no">図8</span>状況からの実行エンジン選択。SIMD はコンパイラと排他(インタプリタ限定)である点に注意。</figcaption>
+</figure>
+
+<p>「コンパイラは速い」の程度はワークロード依存です。公式も「usually expected to evaluate (much) faster」という言い方に留めており、絶対値は自分で測るのが前提です。</p>
+<h2 id="6-2-自分の環境で測る-JMH-の手順">6.2 自分の環境で測る — JMH の手順</h2>
+<p>Chicory リポジトリには <code>jmh</code> モジュールがあり、<code>BenchmarkFactorialExecution</code>、<code>BenchmarkSievePrimes</code>、<code>BenchmarkParsing</code>、<code>BenchmarkWat2Wasm</code> などのベンチが同梱されています。まずこれを動かして肌感を掴み、次に<strong>自分のモジュールと入力</strong>で測ります。最小の自作 JMH は次の形です。</p>
+<div class="hl"><pre><span></span><code><span class="nd">@State</span><span class="p">(</span><span class="n">Scope</span><span class="p">.</span><span class="na">Benchmark</span><span class="p">)</span>
+<span class="kd">public</span><span class="w"> </span><span class="kd">class</span> <span class="nc">MyWasmBench</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">WasmModule</span><span class="w"> </span><span class="kd">module</span><span class="err">;</span>
+    <span class="nc">Instance</span><span class="w"> </span><span class="n">interp</span><span class="p">;</span>
+<span class="w">    </span><span class="n">Instance</span><span class="w"> </span><span class="n">compiled</span><span class="p">;</span>
+
+<span class="w">    </span><span class="nd">@Setup</span>
+<span class="w">    </span><span class="kd">public</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">setup</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">module</span> <span class="err">=</span> <span class="nc">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">File</span><span class="p">(</span><span class="s">&quot;target/my.wasm&quot;</span><span class="p">));</span>
+<span class="w">        </span><span class="n">interp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">).</span><span class="nc">build</span><span class="p">();</span>
+<span class="w">        </span><span class="n">compiled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+                <span class="err">.</span><span class="nc">withMachineFactory</span><span class="p">(</span><span class="n">MachineFactoryCompiler</span><span class="p">::</span><span class="n">compile</span><span class="p">).</span><span class="na">build</span><span class="p">();</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nd">@Benchmark</span><span class="w"> </span><span class="kd">public</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="nf">interpreter</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">interp</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;run&quot;</span><span class="p">).</span><span class="na">apply</span><span class="p">(</span><span class="n">N</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="nd">@Benchmark</span><span class="w"> </span><span class="kd">public</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="nf">compiler</span><span class="p">()</span><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">compiled</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="s">&quot;run&quot;</span><span class="p">).</span><span class="na">apply</span><span class="p">(</span><span class="n">N</span><span class="p">)</span><span class="o">[</span><span class="mi">0</span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>測るべき軸は3つ: <strong>①スループット</strong>(上のような呼び出しベンチ)、<strong>②初期化時間</strong>(<code>Instance.builder(...).build()</code> 自体をベンチ関数にする。ランタイムコンパイラの eager コンパイルコストがここに乗る)、<strong>③メモリ実装</strong>(<code>ByteBufferMemory</code> vs <code>ByteArrayMemory</code> を <code>withMemoryFactory</code> で切り替え。公式が「ベンチマークなしに変えるな」と言うのはここです)。</p>
+<p>比較対象にネイティブランタイム(wasmtime 等)を含める場合は、第1章の非目標(最速は目指さない)を思い出し、「その差額で配布と運用の単純さを買うか」という判断軸で読みます。</p>
+<h2 id="6-3-メモリとリソースの制限">6.3 メモリとリソースの制限</h2>
+<ul>
+<li><strong>線形メモリ上限</strong>: ランタイム上限は 32,767 ページ ≒ 2GiB(3.4)。それより細かい制御は <code>withMemoryLimits(new MemoryLimits(initial, max))</code> でインスタンス単位に課します。信頼できないゲストには必須の設定です。</li>
+<li><strong>ホスト側ヒープ</strong>: 線形メモリは JVM ヒープ上に確保されるため、<code>-Xmx</code> の設計に「同時インスタンス数 × メモリ上限」を織り込みます。</li>
+<li><strong>アロケーション戦略</strong>: runtime には <code>MemAllocStrategy</code>(<code>DefaultMemAllocStrategy</code> / <code>ExactMemAllocStrategy</code>)があり、メモリ成長時の確保方法を調整できます。既定で困ってから触る類のノブです。</li>
+</ul>
+<h2 id="6-4-巨大関数問題-JVM-メソッドサイズ上限">6.4 巨大関数問題 — JVM メソッドサイズ上限</h2>
+<p>コンパイラ系エンジン特有の制約として、<strong>Wasm の1関数 = JVM の1メソッド</strong>に変換されるため、JVM のメソッドサイズ上限(64KiB バイトコード)を超える巨大な Wasm 関数はコンパイルできません。挙動は 4.6/4.7 の通り(ランタイム: WARN でフォールバック、ビルド時: 既定 FAIL)。大規模な生成コード(protobuf、パーサジェネレータ産)や -O0 ビルドのモジュールで踏みがちです。対処: ①ゲスト側を最適化ビルドにする(関数が縮む)、②該当関数を <code>withInterpretedFunctions</code> で明示指定して混成実行、③関数分割をゲスト側に依頼。</p>
+<h2 id="6-5-並行実行と-CPU-制限">6.5 並行実行と CPU 制限</h2>
+<ul>
+<li><strong>スレッド安全性の整理</strong>: <code>WasmModule</code> は不変で共有可。<code>Instance</code> は可変状態(メモリ等)を持つため、<strong>1インスタンスを複数スレッドから同時に叩かない</strong>のが基本(スレッドごと/リクエストごとにインスタンスを分ける)。<code>Store</code> は明示的に非スレッドセーフ(4.8)。</li>
+<li><strong>タイムアウト</strong>: Chicory の実行は<strong>キャリアスレッドの interrupt を尊重</strong>します。公式例の通り <code>ExecutorService</code> + <code>future.get(timeout)</code> + <code>future.cancel(true)</code> で絶対時間の上限を課せます。これは「信頼できないコードの停止保証」の第一選択です。</li>
+<li><strong>命令単位フック</strong>: <code>withUnsafeExecutionListener</code> は<strong>全命令ごと</strong>にリスナが呼ばれる低レベル機構で、公式も「extremely risky / 使用は細心の注意を」としています。命令数カウント(fuel 的な制御)の自作に使えますが、性能への影響は甚大です。</li>
+<li><strong>Wasm threads プロポーザル</strong>: shared memory を伴うマルチスレッド Wasm は 1.7.5 でサポート済みですが、ホスト側のスレッド供給・同期設計が絡むため、まずシングルスレッド+複数インスタンスで設計できないか検討するのが実務的です。</li>
+</ul>
+<h2 id="6-6-セキュリティ運用チェックリスト">6.6 セキュリティ運用チェックリスト</h2>
+<table>
+<thead>
+<tr>
+<th>リスク</th>
+<th>対策</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>メモリ食い潰し</td>
+<td><code>withMemoryLimits</code> + JVM ヒープ設計(6.3)</td>
+</tr>
+<tr>
+<td>CPU 食い潰し(無限ループ)</td>
+<td>ExecutorService + timeout + interrupt(6.5)</td>
+</tr>
+<tr>
+<td>ホスト関数経由の権限昇格</td>
+<td>見せる関数を最小化、引数検証、副作用の監査(3.5/5.2)</td>
+</tr>
+<tr>
+<td>ファイルアクセス</td>
+<td>WASI は Jimfs 仮想 FS のみ見せる(4.5)</td>
+</tr>
+<tr>
+<td>ネットワーク</td>
+<td>WASI のソケット系は未対応=そもそも開いていない(4.5)</td>
+</tr>
+<tr>
+<td>悪意あるバイナリ</td>
+<td>validation を切らない(4.1)。パース例外を fail-fast で扱う(5.6)</td>
+</tr>
+<tr>
+<td>サプライチェーン</td>
+<td>.wasm のダイジェスト固定(5.5)。dircache のキーも SHA-256 ダイジェスト</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="第7章-内部実装の解説-コードのどこを読めば何がわかるか">第7章 内部実装の解説 — コードのどこを読めば何がわかるか</h1>
+<p>Chicory は「シンプルで理解しやすいコード」を Coding Philosophy に掲げており(CONTRIBUTING.md)、ランタイムとしては異例なほど読みやすいコードベースです。この章は 1.7.5 のソースツリーの「地図」です。</p>
+<h2 id="7-1-リポジトリ構成">7.1 リポジトリ構成</h2>
+<p>主要モジュールと中身(リポジトリ直下、および同梱の開発者ドキュメント AGENT.md の記述に基づく):</p>
+<table>
+<thead>
+<tr>
+<th>ディレクトリ</th>
+<th>役割</th>
+<th>入口となるクラス</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wasm/</code></td>
+<td>バイナリパーサ・バリデータ・型定義</td>
+<td><code>Parser</code>、<code>Validator</code>、<code>types/*</code></td>
+</tr>
+<tr>
+<td><code>runtime/</code></td>
+<td>インタプリタ・インスタンス・リンク</td>
+<td><code>Instance</code>、<code>InterpreterMachine</code>、<code>Store</code></td>
+</tr>
+<tr>
+<td><code>compiler/</code></td>
+<td>Wasm → JVM バイトコードコンパイラ</td>
+<td><code>MachineFactoryCompiler</code>、<code>internal/Compiler</code></td>
+</tr>
+<tr>
+<td><code>wasi/</code></td>
+<td>WASI Preview 1 実装</td>
+<td><code>WasiPreview1</code>、<code>WasiOptions</code></td>
+</tr>
+<tr>
+<td><code>simd/</code></td>
+<td>SIMD 命令(Vector API)</td>
+<td><code>SimdInterpreterMachine</code></td>
+</tr>
+<tr>
+<td><code>annotations/</code></td>
+<td>@HostModule 等+プロセッサ</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>build-time-compiler(-cli)/</code>、<code>compiler-maven-plugin/</code></td>
+<td>ビルド時コンパイル</td>
+<td><code>ChicoryCompilerGenMojo</code></td>
+</tr>
+<tr>
+<td><code>wabt/</code>、<code>wasm-tools/</code></td>
+<td>wat2wasm 等のツール(自身が Chicory 上で動く)</td>
+<td><code>Wat2Wasm</code></td>
+</tr>
+<tr>
+<td><code>runtime-tests/</code>、<code>compiler-tests/</code>、<code>machine-tests/</code>、<code>wasi-tests/</code></td>
+<td>spec テスト(自動生成)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>test-gen-plugin/</code>、<code>wasi-test-gen-plugin/</code></td>
+<td>.wast → JUnit 生成プラグイン</td>
+<td><code>TestGenMojo</code></td>
+</tr>
+<tr>
+<td><code>fuzz/</code>、<code>jmh/</code>、<code>wasm-corpus/</code></td>
+<td>ファジング・ベンチ・テスト資材</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>依存グラフは 3.1 の図の通りで、<code>wasm → runtime → (wasi | compiler | simd | log)</code> という一方向の層構造です。</p>
+<h2 id="7-2-wasm-モジュール-パーサとバリデータ">7.2 <code>wasm</code> モジュール — パーサとバリデータ</h2>
+<ul>
+<li><strong><code>Parser.java</code></strong> — Wasm バイナリフォーマットのセクション単位パーサ。<code>ParserListener</code> を渡すストリーミング風の口(<code>parse(InputStream, ParserListener)</code>)もあり、<code>WasmModule</code> を組み立てずにセクションを覗く用途に使えます。</li>
+<li><strong><code>Validator.java</code></strong> — 型検査。Wasm 仕様書の appendix にある検証アルゴリズムに基づく実装であることが開発者ドキュメントに明記されています。読みどころは「バリデータが命令オペランドに型ヒントを埋め込む」設計で、<code>ref.test</code> / <code>ref.cast</code> / <code>br_on_cast</code>(WasmGC 系命令)の<strong>ソースヒープ型を検証時に解決しておき、インタプリタが実行時に推測せずにディスパッチできる</strong>ようにしています。「実行時に型計算を持ち込まない。検証時に前計算・キャッシュする」というプロジェクトの性能原則の実例です。</li>
+<li><strong><code>types/</code></strong> — <code>ValType</code>、<code>FunctionType</code>、<code>OpCode</code> に加え、WasmGC 対応で入った <code>SubType</code> / <code>RecType</code> / <code>CompType</code> / <code>StructType</code> / <code>ArrayType</code> / <code>FieldType</code> / <code>StorageType</code> / <code>PackedType</code> など。GC プロポーザルの型システムがどう Java にモデル化されているかはここを読みます。</li>
+</ul>
+<h2 id="7-3-runtime-モジュール-インタプリタの心臓部">7.3 <code>runtime</code> モジュール — インタプリタの心臓部</h2>
+<ul>
+<li><strong><code>InterpreterMachine.java</code></strong> — 実行の主ループ。1.7.5 時点で約 3,500 行・<strong>344 個の case ラベル</strong>を持つオペコードディスパッチです。<code>MStack</code>(値スタック)、<code>StackFrame</code> / <code>CtrlFrame</code>(フレームと制御構造)と併せて読むと、Wasm がスタックマシンであることが素直に写像されているのが分かります。「まず InterpreterMachine の該当オペコードの case を読む」が Chicory デバッグの基本動作です。</li>
+<li><strong><code>Instance.java</code></strong> — インスタンス化のシーケンス(インポート解決 → メモリ/テーブル/グローバル生成 → セグメント初期化 → start)。GC 参照の格納やヒープ型マッチングもここに集約されています。</li>
+<li><strong><code>internal/GcRefStore.java</code></strong> — WasmGC の参照を自動採番キーで保持し、<strong>マークスイープ回収</strong>を行うストア。<code>WasmStruct</code>(フィールドをスタック値と同じ long エンコーディングで持つ)/ <code>WasmArray</code> / <code>WasmI31Ref</code> が GC オブジェクトの実行時表現です。「JVM の GC の上に Wasm の GC 意味論をどう載せるか」という設計問題への解がここで読めます。</li>
+<li><strong><code>ConstantEvaluators.java</code></strong> — グローバル初期化やエレメント/データセグメントで使われる定数式の評価器。拡張定数式プロポーザル対応の実体。</li>
+<li><strong><code>ByteBufferMemory</code> / <code>ByteArrayMemory</code></strong> — 線形メモリの2実装。境界チェックとエンディアン(Wasm はリトルエンディアン)の扱いを見るならここ。</li>
+</ul>
+<h2 id="7-4-compiler-モジュール-Wasm-JVM-バイトコード">7.4 <code>compiler</code> モジュール — Wasm → JVM バイトコード</h2>
+<p>エントリポイントは <code>MachineFactoryCompiler</code>、変換本体は <code>internal/Compiler</code> で、ASM(ow2)を使って <strong>Wasm の各関数を JVM メソッドに</strong>変換します。6.4 の巨大関数問題(JVM の 64KiB メソッド上限)はこの1対1変換の直接の帰結で、フォールバック時は <code>internal/CompilerInterpreterMachine</code> がコンパイル済みコードとインタプリタの混成実行を担います。ビルド時コンパイラ(<code>build-time-compiler</code>)は同じ変換器を Maven/Gradle/CLI から呼び出し、<code>.class</code> として書き出す皮です。</p>
+<h2 id="7-5-wasi-モジュール">7.5 <code>wasi</code> モジュール</h2>
+<p><code>WasiPreview1.java</code> に各 WASI 関数のホスト関数実装がフラットに並んでいます。「この WASI 関数はサポートされているか、どういう制限があるか」の一次情報はこのファイルで、公式ドキュメントの対応表(4.5)もここから生成される運用です。ファイルシステムは NIO の <code>FileSystem</code> 抽象に対して書かれており、Jimfs がテスト対象(4.5)。</p>
+<h2 id="7-6-テスト戦略の内幕-仕様準拠をどう担保しているか">7.6 テスト戦略の内幕 — 仕様準拠をどう担保しているか</h2>
+<p>Chicory の信頼性の根拠はここにあります。</p>
+<ol>
+<li><strong>Wasm 公式テストスイート</strong>(<code>testsuite/</code> サブモジュールの <code>.wast</code> ファイル群)を、自作の Maven プラグイン <strong><code>test-gen-plugin</code> がビルド時に JUnit テストクラスへ自動生成</strong>します。</li>
+<li>生成されたテストは <code>runtime-tests</code>(インタプリタ)、<code>compiler-tests</code>(コンパイラ)、<code>machine-tests</code>(両エンジン共通)、<code>wasi-tests</code>(WASI テストスイート)で実行されます。<strong>同じ spec テストを両エンジンに課す</strong>ことが「コンパイラはインタプリタのドロップイン代替」という保証の実体です。</li>
+<li>新しい spec テストの追加は <code>runtime-tests/pom.xml</code> の <code>&lt;includedWasts&gt;</code> にファイル名を足して再生成、という手順が開発者ドキュメントに定義されています(<code>mvn surefire:test -pl runtime-tests -Dtest=SpecV1GcStructTest</code> のように単体実行も可能)。</li>
+<li>加えて <code>fuzz/</code> モジュールでファジングも行われています。</li>
+</ol>
+<h2 id="7-7-設計変遷-なぜ今の形か">7.7 設計変遷 — なぜ今の形か</h2>
+<p>READMEのロードマップがそのまま設計史になっています。</p>
+<table>
+<thead>
+<tr>
+<th>年</th>
+<th>マイルストーン(抜粋)</th>
+<th>設計上の意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2023</td>
+<td>バイナリパーサ、素朴なインタプリタ、spec テスト自動生成の確立</td>
+<td>「正しさの検証装置」を最初に作った</td>
+</tr>
+<tr>
+<td>2024</td>
+<td>全 spec テスト green(正しさ)、validation 実装(安全)、<strong>v1.0 API 策定</strong>、<strong>インタプリタ/コンパイラのエンジン分離</strong>、AOT が spec 全通過、WASIp1</td>
+<td><code>Machine</code> 抽象の導入。1.0.0 は2024年12月</td>
+</tr>
+<tr>
+<td>2025</td>
+<td>SIMD、Tail Call、コンパイラの実験卒業、例外処理、スレッド、拡張定数式</td>
+<td>プロポーザル追従期</td>
+</tr>
+<tr>
+<td>2026</td>
+<td><strong>GC、Multi-Memory 完了。残タスクは Performance</strong></td>
+<td>機能面の主要プロポーザルは完走</td>
+</tr>
+</tbody>
+</table>
+<p>「まずインタプリタで正しさを固定し、その spec テストを錨にしてコンパイラを育てる」という順序が、このプロジェクトの品質戦略の核心です。</p>
+<hr />
+<h1 id="第8章-APIリファレンス-モジュール別">第8章 APIリファレンス(モジュール別)</h1>
+<p>網羅的な Javadoc は各アーティファクトの javadoc jar(Maven Central)を参照してください。ここでは 1.7.5 の「どのアーティファクトに何が入っているか」と最重要 API を整理します。バージョンは BOM(2.1)で揃えるのが前提です。</p>
+<h2 id="8-1-アーティファクト一覧">8.1 アーティファクト一覧</h2>
+<table>
+<thead>
+<tr>
+<th>groupId はすべて <code>com.dylibso.chicory</code></th>
+<th>役割</th>
+<th>安定度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runtime</code></td>
+<td>実行の中核(Instance/Store/Memory/HostFunction)。<code>wasm</code> を推移的に含む</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>wasm</code></td>
+<td>パーサ・バリデータ・型。runtime 経由で入る</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>wasi</code></td>
+<td>WASI Preview 1</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>compiler</code></td>
+<td>ランタイムコンパイラ(要 ASM)</td>
+<td>安定(2025年に実験卒業)</td>
+</tr>
+<tr>
+<td><code>chicory-compiler-maven-plugin</code> / Gradle プラグイン / <code>build-time-compiler(-cli)</code></td>
+<td>ビルド時コンパイル</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>annotations</code> + <code>annotations-processor</code></td>
+<td>@HostModule / @WasmExport / @WasmModuleInterface</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>simd</code></td>
+<td>SIMD インタプリタ(Java 21+)</td>
+<td>条件付き</td>
+</tr>
+<tr>
+<td><code>log</code></td>
+<td>ロギング抽象</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>bom</code></td>
+<td>バージョン整合</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>wabt</code> / <code>wasm-tools</code></td>
+<td>wat2wasm 等の開発ツール</td>
+<td>安定</td>
+</tr>
+<tr>
+<td><code>dircache-experimental</code></td>
+<td>コンパイルキャッシュ</td>
+<td><strong>実験的</strong></td>
+</tr>
+<tr>
+<td><code>cli</code></td>
+<td>コマンドライン実行</td>
+<td><strong>実験的</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>「experimental」の意味</strong>は公式に定義されています: 設計に 100% の確信が持てないため、<strong>SemVer に縛られず破壊的変更(artifactId・クラス・メソッドの改名等)を行う可能性がある</strong>モジュール。ただし「動いているものが完全に消される可能性は低い」。実験的モジュールを本番依存に入れるときはマイナーアップデートでもリリースノートを読む運用にしてください。</p>
+<h2 id="8-2-最重要-API-早見表">8.2 最重要 API 早見表</h2>
+<div class="hl"><pre><span></span><code><span class="c1">// --- パース(wasm) ---</span>
+<span class="n">WasmModule</span><span class="w"> </span><span class="n">Parser</span><span class="p">.</span><span class="na">parse</span><span class="p">(</span><span class="n">File</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Path</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kt">byte</span><span class="o">[]</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">InputStream</span><span class="p">)</span>
+<span class="n">Parser</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">withValidation</span><span class="p">(</span><span class="kt">boolean</span><span class="p">).</span><span class="na">build</span><span class="p">()</span>
+
+<span class="c1">// --- インスタンス化(runtime) ---</span>
+<span class="n">Instance</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="n">WasmModule</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withImportValues</span><span class="p">(</span><span class="n">ImportValues</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withMachineFactory</span><span class="p">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">Instance</span><span class="p">,</span><span class="w"> </span><span class="n">Machine</span><span class="o">&gt;</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withMemoryLimits</span><span class="p">(</span><span class="n">MemoryLimits</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">.</span><span class="na">withMemoryFactory</span><span class="p">(...)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withInitialize</span><span class="p">(</span><span class="kt">boolean</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">.</span><span class="na">withStart</span><span class="p">(</span><span class="kt">boolean</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withUnsafeExecutionListener</span><span class="p">(</span><span class="n">ExecutionListener</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">build</span><span class="p">()</span>
+
+<span class="c1">// --- 呼び出し ---</span>
+<span class="n">ExportFunction</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">export</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">name</span><span class="p">);</span>
+<span class="kt">long</span><span class="o">[]</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="na">apply</span><span class="p">(</span><span class="kt">long</span><span class="p">...</span><span class="w"> </span><span class="n">args</span><span class="p">);</span><span class="w">      </span><span class="c1">// throws ChicoryException</span>
+<span class="n">Memory</span><span class="w"> </span><span class="n">mem</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="p">.</span><span class="na">memory</span><span class="p">();</span>
+
+<span class="c1">// --- 値変換(wasm.types.Value) ---</span>
+<span class="n">Value</span><span class="p">.</span><span class="na">floatToLong</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">longToFloat</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">doubleToLong</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">longToDouble</span>
+
+<span class="c1">// --- ホスト関数 ---</span>
+<span class="k">new</span><span class="w"> </span><span class="n">HostFunction</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="kd">module</span><span class="err">,</span> <span class="nc">String</span><span class="w"> </span><span class="n">name</span><span class="p">,</span>
+<span class="w">                 </span><span class="n">FunctionType</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">ValType</span><span class="o">&gt;</span><span class="w"> </span><span class="n">params</span><span class="p">,</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="n">ValType</span><span class="o">&gt;</span><span class="w"> </span><span class="n">results</span><span class="p">),</span>
+<span class="w">                 </span><span class="p">(</span><span class="n">Instance</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="p">...)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kt">long</span><span class="o">[]</span><span class="w"> </span><span class="cm">/* または null */</span><span class="p">)</span>
+<span class="n">ImportValues</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">addFunction</span><span class="p">(</span><span class="n">HostFunction</span><span class="p">...).</span><span class="na">build</span><span class="p">()</span>
+
+<span class="c1">// --- リンク ---</span>
+<span class="k">new</span><span class="w"> </span><span class="n">Store</span><span class="p">().</span><span class="na">addFunction</span><span class="p">(...).</span><span class="na">instantiate</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">WasmModule</span><span class="p">)</span>
+
+<span class="c1">// --- WASI ---</span>
+<span class="n">WasiOptions</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">inheritSystem</span><span class="p">()</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withStdin</span><span class="o">/</span><span class="n">withStdout</span><span class="o">/</span><span class="n">withStderr</span><span class="p">(...)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withArguments</span><span class="p">(</span><span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span><span class="p">).</span><span class="na">withEnvironment</span><span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withDirectory</span><span class="p">(</span><span class="n">String</span><span class="w"> </span><span class="n">guest</span><span class="p">,</span><span class="w"> </span><span class="n">Path</span><span class="w"> </span><span class="n">host</span><span class="p">).</span><span class="na">build</span><span class="p">()</span>
+<span class="n">WasiPreview1</span><span class="p">.</span><span class="na">builder</span><span class="p">().</span><span class="na">withOptions</span><span class="p">(</span><span class="n">opts</span><span class="p">).</span><span class="na">build</span><span class="p">().</span><span class="na">toHostFunctions</span><span class="p">()</span>
+
+<span class="c1">// --- エンジン ---</span>
+<span class="nl">MachineFactoryCompiler</span><span class="p">::</span><span class="n">compile</span><span class="w">                       </span><span class="c1">// ランタイムコンパイラ</span>
+<span class="n">MachineFactoryCompiler</span><span class="p">.</span><span class="na">builder</span><span class="p">(</span><span class="kd">module</span><span class="err">)</span>
+    <span class="err">.</span><span class="nc">withInterpreterFallback</span><span class="p">(</span><span class="n">WARN</span><span class="o">|</span><span class="n">SILENT</span><span class="o">|</span><span class="n">FAIL</span><span class="p">)</span>
+<span class="w">    </span><span class="p">.</span><span class="na">withInterpretedFunctions</span><span class="p">(</span><span class="n">Set</span><span class="o">&lt;</span><span class="n">Integer</span><span class="o">&gt;</span><span class="p">).</span><span class="na">compile</span><span class="p">()</span>
+<span class="nl">SimdInterpreterMachine</span><span class="p">::</span><span class="k">new</span><span class="w">                           </span><span class="c1">// SIMD(Java 21+)</span>
+<span class="nl">GeneratedClass</span><span class="p">::</span><span class="n">create</span><span class="w">                                </span><span class="c1">// ビルド時コンパイル生成物</span>
+</code></pre></div>
+
+<p><code>ValType</code> の主な定数: <code>I32, I64, F32, F64, V128, FuncRef, ExternRef, ExnRef</code>(+GC 関連の参照型)。</p>
+<h2 id="8-3-アノテーション-API">8.3 アノテーション API</h2>
+<table>
+<thead>
+<tr>
+<th>アノテーション</th>
+<th>対象</th>
+<th>効果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@HostModule("name")</code></td>
+<td>クラス</td>
+<td>ホスト関数群のコンテナ。<code>&lt;Class&gt;_ModuleFactory.toHostFunctions(this)</code> が生成される</td>
+</tr>
+<tr>
+<td><code>@WasmExport</code></td>
+<td>インスタンスメソッド</td>
+<td>ホスト関数として公開。名前省略時は camelCase → snake_case 変換。<strong>static 不可</strong>(ホスト状態と対話する前提のため)</td>
+</tr>
+<tr>
+<td><code>@WasmModuleInterface("mod.wasm")</code></td>
+<td>クラス</td>
+<td>モジュールから型付きの <code>ModuleExports</code> / <code>ModuleImports</code>(<code>toImportValues()</code> 付き)を生成。クラスパス上のパスか <code>file://</code> URI を指定</td>
+</tr>
+</tbody>
+</table>
+<p>対応する型変換は <code>int↔i32</code>、<code>long↔i64</code>、<code>float↔f32</code>、<code>double↔f64</code> の4種のみ。プロセッサは <code>annotations-processor</code> を <code>annotationProcessorPaths</code> に登録して有効化します(4章参照)。なおビルド時コンパイラ利用時は Maven プラグインの <code>moduleInterface</code> パラメータで同等物が生成でき、その方が簡単です(公式の tip)。</p>
+<hr />
+<h1 id="第9章-トラブルシューティングとFAQ">第9章 トラブルシューティングとFAQ</h1>
+<h2 id="9-1-例外・エラーメッセージ別索引">9.1 例外・エラーメッセージ別索引</h2>
+<table>
+<thead>
+<tr>
+<th>症状 / 例外</th>
+<th>フェーズ</th>
+<th>典型原因</th>
+<th>対処</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MalformedException</code></td>
+<td>パース</td>
+<td>ファイル破損、<code>.wat</code> を誤って渡した、途中切れダウンロード</td>
+<td>バイナリのマジック(<code>\0asm</code>)確認。wat は wat2wasm で変換(2.3)</td>
+</tr>
+<tr>
+<td><code>InvalidException</code></td>
+<td>検証</td>
+<td>型検査違反。手書き/生成の不正モジュール、未対応プロポーザル使用の可能性</td>
+<td>ゲストのツールチェーンを最新化。使用プロポーザルを確認(4.9)</td>
+</tr>
+<tr>
+<td><code>UnlinkableException</code></td>
+<td>インスタンス化</td>
+<td>インポート未解決・シグネチャ不一致</td>
+<td>import 一覧を確認し、ホスト関数/WASI を接続(2.4/4.4/4.5)。名前空間・関数名・型の3点照合</td>
+</tr>
+<tr>
+<td><code>UninstantiableException</code></td>
+<td>インスタンス化</td>
+<td>start 関数内のトラップ等</td>
+<td>start の実行を <code>withStart(false)</code> で切り分け</td>
+</tr>
+<tr>
+<td><code>TrapException</code>(unreachable)</td>
+<td>実行</td>
+<td>ゲストの panic/abort(Rust の panic は unreachable になる)</td>
+<td>ゲスト側で panic ハンドラ/ログを仕込む。入力値を確認</td>
+</tr>
+<tr>
+<td><code>TrapException</code>(out of bounds memory access)</td>
+<td>実行</td>
+<td>ポインタ/長さの受け渡しミス、alloc忘れ、解放済み領域アクセス</td>
+<td>4.3 のプロトコル(alloc→write→call→dealloc)を再点検</td>
+</tr>
+<tr>
+<td><code>TrapException</code>(ゼロ除算・integer overflow 等)</td>
+<td>実行</td>
+<td>文字通り</td>
+<td>ゲストのロジック/入力検証</td>
+</tr>
+<tr>
+<td><code>WasmRuntimeException</code>(WASI 関数)</td>
+<td>実行</td>
+<td>未サポート WASI 機能の呼び出し(ソケット等)</td>
+<td>4.5 の対応表を確認。ゲストからその機能の使用を除去</td>
+</tr>
+<tr>
+<td><code>WasiExitException</code></td>
+<td>実行</td>
+<td>ゲストが <code>exit(n)</code> した</td>
+<td>準正常系として捕捉し終了コードを処理(5.6)</td>
+</tr>
+<tr>
+<td><code>ChicoryInterruptedException</code></td>
+<td>実行</td>
+<td>タイムアウト等での interrupt</td>
+<td>打ち切りとして扱い、インスタンスを破棄(6.5)</td>
+</tr>
+<tr>
+<td>stderr に <code>Warning: using interpreted mode for WASM function index: N</code></td>
+<td>コンパイラ</td>
+<td>JVM メソッドサイズ上限超えの巨大関数</td>
+<td>6.4 参照(最適化ビルド / withInterpretedFunctions / SILENT)</td>
+</tr>
+<tr>
+<td>ビルド時 <code>WASM function size exceeds the Java method size limits ...</code></td>
+<td>ビルド</td>
+<td>同上(ビルド時コンパイラは既定 FAIL)</td>
+<td>interpreterFallback を WARN にして関数一覧を収集 → 明示指定</td>
+</tr>
+<tr>
+<td>native-image でランタイムコンパイラが失敗</td>
+<td>ビルド/実行</td>
+<td>リフレクション+動的クラスロード</td>
+<td>ビルド時コンパイルへ移行(4.7)</td>
+</tr>
+<tr>
+<td>SIMD モジュールが動かない/遅い</td>
+<td>実行</td>
+<td>Java 21 未満、またはコンパイラと併用しようとした</td>
+<td>Java 21+ &amp; <code>SimdInterpreterMachine</code>(インタプリタ限定)(4.9)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-2-よくある落とし穴とアンチパターン">9.2 よくある落とし穴とアンチパターン</h2>
+<ul>
+<li><strong>f32/f64 を数値のまま <code>apply</code> に渡す</strong> — 必ず <code>Value.floatToLong/doubleToLong</code> でビットパターン化(2.2)。レビューで最頻出です。</li>
+<li><strong><code>Instance</code> をスレッド間で共有して同時に呼ぶ</strong> — インスタンスは実行状態の塊。共有するなら <code>WasmModule</code>(6.5)。</li>
+<li><strong><code>Store</code> をシングルトンにしてマルチスレッドから触る</strong> — 公式が非スレッドセーフと明言(4.8)。</li>
+<li><strong>信頼できないゲストに <code>withMemoryLimits</code> なしで実行させる</strong> — 2GiB まで成長し得ます(6.3)。</li>
+<li><strong>WASI に実ディレクトリを直接プリオープンする</strong> — 公式テスト対象は Jimfs。仮想 FS 経由が安全側(4.5)。</li>
+<li><strong>トラップしたインスタンスの使い回し</strong> — ゲスト内部状態は不定。作り直す(5.6)。</li>
+<li><strong>validation の安易な無効化</strong> — 特に SIMD では誤結果の警告あり(4.1)。</li>
+<li><strong>experimental モジュールを普通の依存と同じ感覚でアップグレード</strong> — SemVer 対象外(8.1)。</li>
+</ul>
+<h2 id="9-3-デバッグ手法">9.3 デバッグ手法</h2>
+<ol>
+<li><strong>エンジンをインタプリタに戻して再現確認</strong> — <code>withMachineFactory</code> を外すだけ。これで直るならコンパイラ絡み(まず 6.4 の巨大関数警告と 9.1 を確認)、直らないならモジュール自体かホスト統合の問題。</li>
+<li><strong>ロギングを上げる</strong> — 既定は JDK Platform Logging。<code>java.util.logging.config.file</code> で Chicory のログレベルを調整(4.9)。</li>
+<li><strong>モジュールを外から検査</strong> — wabt の <code>wasm-objdump -x</code> で import/export/メモリ宣言を確認。Chicory 同梱の <code>wasm-tools</code> / <code>wabt</code> アーティファクトを使えば JVM 内からも可能。</li>
+<li><strong>メモリの中身を覗く</strong> — ホスト関数やテストから <code>instance.memory().readBytes(addr, len)</code> でダンプ。ポインタ受け渡しバグの特定に直結。</li>
+<li><strong>命令トレース(最終手段)</strong> — <code>withUnsafeExecutionListener((insn, stack) -&gt; ...)</code> で全命令をログ。極端に遅くなるので短い再現ケース限定(6.5)。</li>
+<li><strong>別ランタイムと突き合わせる</strong> — 同じ <code>.wasm</code> を wasmtime CLI 等で実行し、挙動が一致するかで「ゲストの問題か、ホスト統合の問題か」を切り分ける(9.4)。</li>
+</ol>
+<h2 id="9-4-Wasm-側か-Chicory-側か-自分の統合か-切り分けフロー">9.4 「Wasm 側か、Chicory 側か、自分の統合か」切り分けフロー</h2>
+<figure class="fig ">
+
+<svg viewBox="0 0 740 470" role="img" aria-label="トラブル切り分けフローチャート">
+<defs>
+<marker id="ar9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#7A8496"/></marker>
+<marker id="arB9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10 z" fill="#3E63DD"/></marker>
+</defs>
+<rect x="20" y="14" width="150" height="36" rx="18" class="bx-accent"/>
+<text x="95" y="37" class="t tb mid">問題発生</text>
+<path d="M95 50 V72" class="ln" fill="none" marker-end="url(#ar9)"/>
+<rect x="20" y="76" width="200" height="44" rx="8" class="q"/>
+<text x="120" y="96" class="t mid">パース / 検証で失敗?</text>
+<text x="120" y="112" class="ts mid">Malformed / Invalid</text>
+<path d="M220 98 H268" class="ln" fill="none" marker-end="url(#ar9)"/><text x="236" y="90" class="ts">Yes</text>
+<rect x="272" y="70" width="448" height="56" rx="8" class="bx"/>
+<text x="292" y="92" class="ts">wasm-objdump でも読めない → ゲストのビルド産物が不良</text>
+<text x="292" y="112" class="ts">読める → 使用プロポーザルと Chicory の対応状況(10.3)を確認</text>
+<path d="M95 120 V150" class="ln" fill="none" marker-end="url(#ar9)"/><text x="104" y="142" class="ts">No</text>
+<rect x="20" y="154" width="200" height="44" rx="8" class="q"/>
+<text x="120" y="174" class="t mid">インスタンス化で失敗?</text>
+<text x="120" y="190" class="ts mid">Unlinkable / Uninstantiable</text>
+<path d="M220 176 H268" class="ln" fill="none" marker-end="url(#ar9)"/><text x="236" y="168" class="ts">Yes</text>
+<rect x="272" y="152" width="448" height="48" rx="8" class="bx"/>
+<text x="292" y="172" class="ts">インポート供給漏れ / 名前空間・関数名・型の不一致が大半</text>
+<text x="292" y="190" class="ts">→ ホスト統合(自分)側をまず疑う(4.4 / 4.5)</text>
+<path d="M95 198 V228" class="ln" fill="none" marker-end="url(#ar9)"/><text x="104" y="220" class="ts">No</text>
+<rect x="20" y="232" width="200" height="44" rx="8" class="q"/>
+<text x="120" y="252" class="t mid">実行時トラップ?</text>
+<text x="120" y="268" class="ts mid">TrapException</text>
+<path d="M220 254 H268" class="ln" fill="none" marker-end="url(#ar9)"/><text x="236" y="246" class="ts">Yes</text>
+<rect x="272" y="222" width="448" height="96" rx="8" class="bx"/>
+<text x="292" y="244" class="ts">wasmtime 等でも同じ入力でトラップ → ゲストのバグ</text>
+<text x="292" y="264" class="ts">Chicory だけトラップ → エンジン切替(インタプリタ⇔コンパイラ)で比較</text>
+<text x="292" y="284" class="ts">エンジン間で差が出る → Chicory のバグの可能性。</text>
+<text x="292" y="302" class="ts">最小再現(.wat)を作って Issue / Zulip へ(11.2)</text>
+<path d="M95 276 V330" class="ln" fill="none" marker-end="url(#ar9)"/><text x="104" y="316" class="ts">No</text>
+<rect x="20" y="334" width="200" height="44" rx="8" class="q"/>
+<text x="120" y="354" class="t mid">結果の値が違う?</text>
+<text x="120" y="370" class="ts mid">例外は出ない</text>
+<path d="M220 356 H268" class="ln" fill="none" marker-end="url(#ar9)"/><text x="236" y="348" class="ts">Yes</text>
+<rect x="272" y="336" width="448" height="44" rx="8" class="bx-warn"/>
+<text x="292" y="356" class="ts">f32/f64 のビット変換ミスが最頻出(Value.xxxToLong を確認 → 2.2)</text>
+<text x="292" y="374" class="ts">次点: ポインタ/長さの取り違え(4.3)</text>
+<path d="M95 378 V408" class="ln" fill="none" marker-end="url(#ar9)"/><text x="104" y="400" class="ts">No</text>
+<rect x="20" y="412" width="330" height="40" rx="8" class="bx"/>
+<text x="185" y="430" class="ts mid">性能・リソース問題 → 第6章へ</text>
+<text x="185" y="446" class="ts mid">(エンジン選択・メモリ上限・巨大関数)</text>
+</svg>
+<figcaption><span class="fig-no">図9</span>「ゲストの問題か、Chicory の問題か、自分の統合の問題か」を切り分けるフロー。別ランタイム比較とエンジン間比較が2大テクニック。</figcaption>
+</figure>
+
+<h2 id="9-5-FAQ">9.5 FAQ</h2>
+<p><strong>Q. wat ファイルを直接ロードできますか?</strong>
+A. Chicory 本体に WAT パーサはまだありません。<code>wabt</code> / <code>wasm-tools</code> アーティファクトの <code>Wat2Wasm.parse</code> で変換してください(2.3)。</p>
+<p><strong>Q. コンポーネントモデル / WASI Preview 2 は?</strong>
+A. 1.7.5 のサポートは WASI <strong>Preview 1</strong> です。ロードマップと最新状況は公式リポジトリを確認してください。</p>
+<p><strong>Q. Android で使えますか?</strong>
+A. インタプリタは API 28+ で公式にテストされています。ランタイムコンパイラは動的クラスロードの制約があるため、Android ではインタプリタかビルド時コンパイルを選びます。メモリ実装は既定の <code>ByteBufferMemory</code> のままに(4.9)。</p>
+<p><strong>Q. どのくらい速い?</strong>
+A. 「最速を目指さない」が公式の非目標です(1.3)。判断は 6.2 の手順で自分のワークロードを測ってください。</p>
+<hr />
+<h1 id="第10章-バージョン管理と移行">第10章 バージョン管理と移行</h1>
+<h2 id="10-1-バージョニングポリシー">10.1 バージョニングポリシー</h2>
+<ul>
+<li>1.0.0(2024年12月)以降、安定モジュールは SemVer に基づく後方互換を重視しています。CONTRIBUTING の Coding Philosophy にも「可能な限り後方互換」が明記されています。</li>
+<li><strong>例外は <code>-experimental</code> を冠するモジュール</strong>(dircache-experimental、cli 等)。前述の通り SemVer の対象外で、改名・API 変更が起こり得ます(8.1)。</li>
+<li>リリースは GitHub Releases(1.7.5 時点で15リリース)とMaven Central。変更履歴はリリースノートで追います。</li>
+</ul>
+<h2 id="10-2-0-x-時代のコードからの移行">10.2 0.x 時代のコードからの移行</h2>
+<p>Web 上の古い記事(2023〜2024年前半)は 0.x API のままのものが多く、検索経由で混乱しやすいポイントです。代表的な差分を「旧 → 新」で対比します。</p>
+<table>
+<thead>
+<tr>
+<th>0.x 時代の書き方(古い記事に頻出)</th>
+<th>1.x の書き方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Module.builder(wasmBytes).build()</code></td>
+<td><code>Parser.parse(bytes)</code> で <code>WasmModule</code> を得る</td>
+</tr>
+<tr>
+<td><code>Value.i32(2)</code> を引数に渡す / <code>Value[]</code> が返る</td>
+<td><code>apply(long...)</code> に生の long を渡し、<code>long[]</code> を受ける</td>
+</tr>
+<tr>
+<td><code>Module</code> クラス(runtime パッケージ)</td>
+<td><code>WasmModule</code>(wasm パッケージ)+ <code>Instance</code> の分離</td>
+</tr>
+<tr>
+<td>AOT は実験的機能</td>
+<td><code>compiler</code> は安定。<code>MachineFactoryCompiler</code> 経由(4.6)</td>
+</tr>
+</tbody>
+</table>
+<p>移行の実務は「①まず <code>Parser.parse</code> / <code>Instance.builder</code> / <code>export().apply(long...)</code> の3点に書き換える、②<code>Value</code> ラッパーを剥がして <code>Value.xxxToLong</code> 変換に置換する、③コンパイラ利用箇所を <code>MachineFactoryCompiler</code> に更新する」の順で機械的に進められます。</p>
+<h2 id="10-3-プロポーザル対応マトリクス-1-7-5-時点">10.3 プロポーザル対応マトリクス(1.7.5 時点)</h2>
+<table>
+<thead>
+<tr>
+<th>Wasm プロポーザル</th>
+<th>対応</th>
+<th>条件・備考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>コア仕様(MVP + validation)</td>
+<td>✅</td>
+<td>spec テストを CI で常時実行</td>
+</tr>
+<tr>
+<td>WASI Preview 1</td>
+<td>✅</td>
+<td>ソケット系など一部関数は未対応(4.5)</td>
+</tr>
+<tr>
+<td>SIMD</td>
+<td>✅</td>
+<td>Java 21+、インタプリタのみ(4.9)</td>
+</tr>
+<tr>
+<td>Tail Call</td>
+<td>✅</td>
+<td>インタプリタ(およびコンパイラ)</td>
+</tr>
+<tr>
+<td>Exception Handling</td>
+<td>✅</td>
+<td><code>ExnRef</code> 型あり</td>
+</tr>
+<tr>
+<td>Threads</td>
+<td>✅</td>
+<td>shared memory 対応</td>
+</tr>
+<tr>
+<td>Extended Constant Expressions</td>
+<td>✅</td>
+<td></td>
+</tr>
+<tr>
+<td>WasmGC</td>
+<td>✅</td>
+<td>2026年対応。<code>WasmStruct</code>/<code>WasmArray</code>/<code>WasmI31Ref</code>(7.3)</td>
+</tr>
+<tr>
+<td>Multi-Memory</td>
+<td>✅</td>
+<td>2026年対応</td>
+</tr>
+<tr>
+<td>コンポーネントモデル / WASI P2</td>
+<td>—</td>
+<td>1.7.5 時点では対象外</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10-4-ロードマップ">10.4 ロードマップ</h2>
+<p>README のロードマップでは、2026年の残項目は <strong>Performance</strong> のみです(機能面の主要プロポーザルは完走)。今後のリリースでは実行性能・メモリ効率の改善が中心になると予想されるため、6.2 のベンチマークをバージョン更新時に回し直す運用と相性が良い局面です。</p>
+<hr />
+<h1 id="第11章-コントリビューションとコミュニティ">第11章 コントリビューションとコミュニティ</h1>
+<h2 id="11-1-開発環境のセットアップ">11.1 開発環境のセットアップ</h2>
+<p>必要なのは <strong>Java 11+ と Maven</strong>(同梱の <code>./mvnw</code> で可)。よく使うコマンドは開発者ドキュメントにまとまっています。</p>
+<div class="hl"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/dylibso/chicory<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>chicory
+
+./mvnw<span class="w"> </span>clean<span class="w"> </span>install<span class="w">          </span><span class="c1"># フルビルド+全テスト</span>
+./mvnw<span class="w"> </span>-Dquickly<span class="w">              </span><span class="c1"># テスト・チェック全部スキップの高速インストール</span>
+./mvnw<span class="w"> </span>install<span class="w"> </span>-DskipTests<span class="w">    </span><span class="c1"># テストのみスキップ</span>
+./mvnw<span class="w"> </span>-Ddev<span class="w"> </span>&lt;goals&gt;<span class="w">          </span><span class="c1"># 開発中は linter/enforcer を無効化</span>
+./mvnw<span class="w"> </span>spotless:apply<span class="w">         </span><span class="c1"># コミット前に必須の自動フォーマット</span>
+</code></pre></div>
+
+<p>モジュールは同一ビルド内の Maven プラグインに依存するため単独ではビルドできず、<strong><code>-pl</code> と <code>-am</code> の併用が基本</strong>です。</p>
+<div class="hl"><pre><span></span><code>./mvnw<span class="w"> </span>install<span class="w"> </span>-pl<span class="w"> </span>runtime<span class="w"> </span>-am<span class="w"> </span>-DskipTests<span class="w">   </span><span class="c1"># runtime と依存元をビルド</span>
+./mvnw<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-pl<span class="w"> </span>runtime<span class="w">                       </span><span class="c1"># runtime のユニットテストだけ実行</span>
+</code></pre></div>
+
+<p>spec テストの回し方(7.6 参照):</p>
+<div class="hl"><pre><span></span><code>./mvnw<span class="w"> </span>install<span class="w"> </span>-pl<span class="w"> </span>runtime-tests<span class="w"> </span>-am<span class="w">          </span><span class="c1"># .wast から JUnit を生成して実行</span>
+./mvnw<span class="w"> </span>surefire:test<span class="w"> </span>-pl<span class="w"> </span>compiler-tests<span class="w">       </span><span class="c1"># コンパイラの spec テスト</span>
+./mvnw<span class="w"> </span>surefire:test<span class="w"> </span>-pl<span class="w"> </span>runtime-tests<span class="w"> </span>-Dtest<span class="o">=</span>SpecV1GcStructTest<span class="w">  </span><span class="c1"># 単体</span>
+</code></pre></div>
+
+<p>コードスタイル: ワイルドカード import 禁止、<code>spotless:apply</code> 必須。「性能のための複雑さより、読める単純さ」という Coding Philosophy(CONTRIBUTING.md)がレビュー基準の根っこにあります。</p>
+<h2 id="11-2-Issue・PR-の出し方">11.2 Issue・PR の出し方</h2>
+<ul>
+<li>小さな貢献(バグ報告・ドキュメント・例)も歓迎、と CONTRIBUTING が明言しています。まず CONTRIBUTING.md を読む(Legal/CLA 相当の記載を含む)。</li>
+<li>バグ報告は 9.4 の切り分け(別ランタイムとの比較、エンジン間の比較、最小再現 <code>.wat</code>)を添えると一級品になります。spec 準拠の問題なら該当 <code>.wast</code> を <code>&lt;includedWasts&gt;</code> に足すテストが最高の再現材料です。</li>
+<li>迷ったら Zulip で先に相談するのが推奨動線です。</li>
+</ul>
+<h2 id="11-3-情報源まとめ">11.3 情報源まとめ</h2>
+<table>
+<thead>
+<tr>
+<th>種別</th>
+<th>場所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>公式サイト / ドキュメント</td>
+<td>https://chicory.dev (docs / blog)</td>
+</tr>
+<tr>
+<td>リポジトリ</td>
+<td>https://github.com/dylibso/chicory</td>
+</tr>
+<tr>
+<td>チャット</td>
+<td>Zulip(README に招待リンク)</td>
+</tr>
+<tr>
+<td>Office Hours</td>
+<td>毎週火曜 16:00–16:30 UTC(リンクは Zulip で告知)</td>
+</tr>
+<tr>
+<td>講演</td>
+<td>Wasm I/O 2024「Creating a Language-Native Wasm Runtime」、Devoxx BE 2024、FOSDEM 2025「Wazero vs Chicory」、QCon London 2025、Wasm I/O 2026「The State of Zero-Dependency Wasm」ほか(README の On the press 節)</td>
+</tr>
+<tr>
+<td>記事</td>
+<td>InfoQ(紹介記事、SQLite×Wasm 記事)、Java Advent 2023/2024/2025、The New Stack、Baeldung、Quarkus ブログ(CEL エンジン事例)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="おわりに">おわりに</h2>
+<p>Chicory は「Wasm ランタイム」という重厚なテーマを、<strong>Java 11 で動く読めるコード + 仕様テストによる正しさの担保 + 安全優先の明確な設計思想</strong>という三点で成立させているプロジェクトです。本書の内容は 1.7.5 のソースと公式ドキュメントに基づいていますが、特に性能領域(2026年の主題)とプロポーザル対応は動きが速いため、実装時には対象バージョンのリリースノートと公式ドキュメントを併読してください。</p>
+<p><strong>本書の検証環境</strong>: Chicory 1.7.5(タグ <code>1.7.5</code>、コミット <code>181f6175</code>、2026-03-24)/ 参照ドキュメント: リポジトリ同梱 <code>docs/</code>、<code>README.md</code>、<code>CONTRIBUTING.md</code>、<code>AGENT.md</code> および chicory.dev 公開ドキュメント。</p>
+</main>
+</div>
+</body>
+</html>
