@@ -113,3 +113,7 @@ unconverted rather than failing the decode.
 - Pixels are always returned as 8-bit premultiplied ARGB; HDR/16-bit data
   is truncated to 8 bits per sample, and colors of nearly transparent
   pixels lose precision to the premultiplication.
+
+## License
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE).

@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    `maven-publish`
     id("at.released.wasm2class.plugin") version "0.5.0"
     id("com.gradleup.shadow") version "9.6.1"
 }
@@ -54,6 +55,29 @@ wasm2class {
             // All functions must compile to bytecode; the Rust profile uses
             // thin LTO so no wasm function exceeds the JVM method size limit.
             interpreterFallback = at.released.wasm2class.InterpreterFallback.FAIL
+        }
+    }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+            pom {
+                name = "jxl-java"
+                description = "Java ImageIO plugin for reading JPEG XL images, powered by jxl-rs compiled to WebAssembly."
+                url = "https://github.com/nttr-tech/jxl-java"
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                scm {
+                    url = "https://github.com/nttr-tech/jxl-java"
+                    connection = "scm:git:https://github.com/nttr-tech/jxl-java.git"
+                }
+            }
         }
     }
 }
