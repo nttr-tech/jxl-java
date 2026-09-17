@@ -1,4 +1,4 @@
-package jp.hisano.imageio.jxl;
+package com.appkitbox.imageio.jxl;
 
 import java.io.IOException;
 import java.util.Locale;

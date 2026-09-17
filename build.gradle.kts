@@ -5,7 +5,7 @@ plugins {
     id("com.gradleup.shadow") version "9.6.1"
 }
 
-group = "jp.hisano.imageio"
+group = "com.appkitbox.imageio"
 version = "0.1.0"
 
 repositories {
@@ -47,9 +47,9 @@ val cargoBuildWasm by tasks.registering(Exec::class) {
 }
 
 wasm2class {
-    targetPackage = "jp.hisano.imageio.jxl.internal"
+    targetPackage = "com.appkitbox.imageio.jxl.internal"
     modules {
-        // Generates jp.hisano.imageio.jxl.internal.JxlDecoderWasmModule.
+        // Generates com.appkitbox.imageio.jxl.internal.JxlDecoderWasmModule.
         create("jxlDecoderWasm") {
             wasm.fileProvider(cargoBuildWasm.map { it.outputs.files.singleFile })
             // All functions must compile to bytecode; the Rust profile uses
@@ -94,7 +94,7 @@ tasks.register<JavaExec>("runViewer") {
     group = "application"
     description = "Runs the JxlImageViewer sample (file dialog + Swing window)."
     classpath = sourceSets.test.get().runtimeClasspath
-    mainClass = "jp.hisano.imageio.jxl.sample.JxlImageViewer"
+    mainClass = "com.appkitbox.imageio.jxl.sample.JxlImageViewer"
 }
 
 // Runs the staged decode benchmark from the test sources.
@@ -102,13 +102,13 @@ tasks.register<JavaExec>("runBenchmark") {
     group = "verification"
     description = "Runs DecodeBenchmark (staged decode timings, cold and warm)."
     classpath = sourceSets.test.get().runtimeClasspath
-    mainClass = "jp.hisano.imageio.jxl.benchmark.DecodeBenchmark"
+    mainClass = "com.appkitbox.imageio.jxl.benchmark.DecodeBenchmark"
 }
 
 // Self-contained jar (jxl-java-<version>-all.jar) with the Chicory
-// runtime shaded under jp.hisano.imageio.jxl.internal so it cannot clash with
+// runtime shaded under com.appkitbox.imageio.jxl.internal so it cannot clash with
 // another Chicory version on the application classpath.
 tasks.shadowJar {
-    relocate("com.dylibso.chicory", "jp.hisano.imageio.jxl.internal.chicory")
+    relocate("com.dylibso.chicory", "com.appkitbox.imageio.jxl.internal.chicory")
     exclude("META-INF/maven/**")
 }

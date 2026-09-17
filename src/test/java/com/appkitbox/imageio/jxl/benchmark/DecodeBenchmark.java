@@ -1,11 +1,11 @@
-package jp.hisano.imageio.jxl.benchmark;
+package com.appkitbox.imageio.jxl.benchmark;
 
 import com.dylibso.chicory.runtime.Instance;
 import com.dylibso.chicory.runtime.Memory;
 import com.dylibso.chicory.wasm.WasmModule;
 
-import jp.hisano.imageio.jxl.internal.JxlDecoderWasm;
-import jp.hisano.imageio.jxl.internal.WasmJxlDecoder;
+import com.appkitbox.imageio.jxl.internal.JxlDecoderWasm;
+import com.appkitbox.imageio.jxl.internal.WasmJxlDecoder;
 
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;

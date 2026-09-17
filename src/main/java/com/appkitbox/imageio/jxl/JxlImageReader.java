@@ -1,6 +1,6 @@
-package jp.hisano.imageio.jxl;
+package com.appkitbox.imageio.jxl;
 
-import jp.hisano.imageio.jxl.internal.WasmJxlDecoder;
+import com.appkitbox.imageio.jxl.internal.WasmJxlDecoder;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;

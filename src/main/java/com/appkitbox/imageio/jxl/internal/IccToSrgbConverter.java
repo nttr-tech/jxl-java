@@ -1,4 +1,4 @@
-package jp.hisano.imageio.jxl.internal;
+package com.appkitbox.imageio.jxl.internal;
 
 import java.awt.color.ColorSpace;
 import java.awt.color.ICC_ColorSpace;

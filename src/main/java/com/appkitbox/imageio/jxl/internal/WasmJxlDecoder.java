@@ -1,4 +1,4 @@
-package jp.hisano.imageio.jxl.internal;
+package com.appkitbox.imageio.jxl.internal;
 
 import com.dylibso.chicory.runtime.ByteArrayMemory;
 import com.dylibso.chicory.runtime.ExportFunction;

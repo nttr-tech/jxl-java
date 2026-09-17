@@ -1,4 +1,4 @@
-package jp.hisano.imageio.jxl.sample;
+package com.appkitbox.imageio.jxl.sample;
 
 import java.awt.image.BufferedImage;
 import java.io.File;

@@ -1,4 +1,4 @@
-package jp.hisano.imageio.jxl;
+package com.appkitbox.imageio.jxl;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;

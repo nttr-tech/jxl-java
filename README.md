@@ -21,7 +21,7 @@ displays the fastest. Both the bare codestream (`FF 0A`) and the ISOBMFF
 container format are supported.
 
 A sample Swing viewer is included in the test sources
-(`jp.hisano.imageio.jxl.sample.JxlImageViewer`); launch it with:
+(`com.appkitbox.imageio.jxl.sample.JxlImageViewer`); launch it with:
 
 ```
 ./gradlew runViewer
@@ -47,7 +47,7 @@ This produces two jars under `build/libs/`:
 - `jxl-java-<version>.jar` — the plain library; requires
   `com.dylibso.chicory:runtime` on the classpath.
 - `jxl-java-<version>-all.jar` — self-contained fat jar with the
-  Chicory runtime shaded under `jp.hisano.imageio.jxl.internal.chicory`, so
+  Chicory runtime shaded under `com.appkitbox.imageio.jxl.internal.chicory`, so
   it never conflicts with another Chicory version in the application.
 
 The build pipeline is:
